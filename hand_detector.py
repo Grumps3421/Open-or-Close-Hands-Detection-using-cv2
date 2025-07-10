@@ -44,7 +44,7 @@ class HandStatusDetector:
                     else:
                         fingers.append(0)
 
-                if fingers[1:] == [1, 0, 0, 0]: 
+                if fingers == [0, 1, 0, 0]:
                     hand_status = "Inappropriate Action"
                 elif sum(fingers) >= 4:
                     hand_status = "Open"
