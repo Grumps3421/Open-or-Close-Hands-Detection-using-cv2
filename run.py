@@ -1,68 +1,54 @@
-from hand_detector import HandStatusDetector
-import cv2
-from flask import Flask, Response, render_template_string , request
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-
+from checking_answer import check_answer  # Your hand detection logic
 
 app = Flask(__name__)
 CORS(app)
 
-from hand_detector import HandStatusDetector
-import cv2
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-
-app = Flask(__name__)
-CORS(app)  # Allows request from Next.js (localhost:3000)
-
-
 @app.route("/nungay", methods=["POST"])
-def main():
+def detect_hand_status():
     data = request.json
     choice = data.get("choice")
 
-    print("Received choice from Next.js:", choice)
+    print("📩 Received choice from Next.js:", choice)
 
-    detector = HandStatusDetector()
-    cap = cv2.VideoCapture(0)
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame = detector.detector_frame(frame)
-        cv2.imshow("Hand Status Detection", frame)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cap.release()
-    detector.release()
-    cv2.destroyAllWindows()
-
-    return (
-        jsonify({
-            "status": "success",
-            "message": f"Started hand detection for choice: {choice}"
-        }), 200
-    ) if choice else (
-        jsonify({
+    # Check if "choice" was provided
+    if not choice:
+        return jsonify({
             "status": "error",
-            "message": "No choice provided"
+            "message": "❌ No choice provided"
         }), 400
-    )
 
+    # Run webcam hand detection
+    result = check_answer()
+    print(f"🖐️ Hand detection result: {result}")
 
-@app.route("/soco")
-def soco():
-    return "Hello Soco!!!"
+    # Return success if gesture is valid
+    if result in ["correct", "wrong"]:
+        return jsonify({
+            "status": "success",
+            "message": f"✅ Detected: {result}",
+            "detected": result,
+            "choice": choice
+        }), 200
+
+    # Otherwise return a "Conflict" (409) for no valid hand gesture
+    return jsonify({
+        "status": "no-gesture",
+        "message": "⚠️ No valid hand gesture detected.",
+        "detected": result,
+        "choice": choice
+    }), 409
+
 
 @app.route("/", methods=["POST"])
 def receive_choice():
     data = request.json
-    print("Received choice from Next.js:", data)
-    return jsonify({"status": "received", "received_choice": data})
+    print("📩 Received choice payload:", data)
+    return jsonify({
+        "status": "received",
+        "received_choice": data
+    })
 
 
 if __name__ == "__main__":
