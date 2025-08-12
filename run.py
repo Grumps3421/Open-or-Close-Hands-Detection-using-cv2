@@ -49,6 +49,7 @@ def receive_choice():
         "status": "received",
         "received_choice": data
     })
+    print("Jower!")
 
 
 @app.route("/open" , methods=["GET" , "POST"])
