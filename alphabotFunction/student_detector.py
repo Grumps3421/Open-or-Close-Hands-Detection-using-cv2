@@ -1,23 +1,18 @@
 import os
-import time
 import cv2
 import mediapipe as mp
 from ultralytics import YOLO
+from pymongo import MongoClient
 
-class_name_map = {
-    "Student1": "Andrei Zyrish Manuel | RED", 
-    "Student2": "Railey Joseph Pacheco | GRAY", 
-    "Student3": "Jomar Aninon | GREEN", 
-    "Student4": "John Lorenz Nungay | ORANGE",
-    "Student5": "Alfredo Santos III | PINK",
-    "Student6": "Ken Mendoza | BLUE",
-    "Student7": "Vincent Tan | WHITE",
-    "Student8": "Marc Salongcong | TURQUOISE",
-    "Student9": "Justin Juanillas | LIGHTPINK",
-    "Student10": "Yuki Ascuncion | SKYBLUE",
-    "Student11": "Kurt Del Rosario | MAROON",
-    "Student12": "John Erick Cabante | PINKGIRL",
-}
+client = MongoClient("mongodb://localhost:27017/")
+db = client["alphabot_db"]
+collection = db["registered_students"]
+
+# Build class_name_map from MongoDB (dynamic classname)
+class_name_map = {}
+students = collection.find({})
+for i, student in enumerate(students, start=1):
+    class_name_map[student["bracelet_id"]] = f"{student['student_name']} | {student.get('color', 'Unknown')}"
 
 class StudentDetector:
     def __init__(self, model_path, thresh=0.7):

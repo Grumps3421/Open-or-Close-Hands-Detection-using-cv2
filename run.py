@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from checking_answer import check_answer , check_answer_result # Your hand detection logic
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -86,6 +87,19 @@ def hand_status_reverse():
         "detected": result,
         "choice": choice
     }), 409
+
+@app.route("/register" , methods=["POST" , "GET"])
+def GUIRegister():
+    from alphabotFunction.register import launch_registration_gui
+    # I-check muna kung may bukas nang GUI
+    if not any(thread.name == "registration_gui" for thread in threading.enumerate()):
+        t = threading.Thread(target=launch_registration_gui, name="registration_gui")
+        t.daemon = True
+        t.start()
+        return jsonify({"status": "GUI Launched"})
+    else:
+        return jsonify({"status": "Already Running"})
+    return jsonify({"status" : "GUI Launched"})
 
 
 if __name__ == "__main__":
