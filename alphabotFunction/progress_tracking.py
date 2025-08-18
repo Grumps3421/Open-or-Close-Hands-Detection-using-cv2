@@ -4,6 +4,7 @@ from pymongo import MongoClient
 from PIL import Image, ImageTk
 import os
 
+# MongoDB
 client = MongoClient("mongodb://localhost:27017/")
 db = client["alphabot_db"]
 collection = db["students"]
@@ -54,7 +55,9 @@ def show_subject_detail(subject):
 
 def show_student_profile(bracelet):
     global current_student
-    student = collection.find_one({"bracelet": bracelet})
+    BRACELET_KEY = "bracelet_id"
+    student = collection.find_one({BRACELET_KEY: bracelet})
+    print(student)
     if not student:
         messagebox.showerror("Uh-oh!", f"Bracelet {bracelet} is not registered!")
         return
@@ -64,7 +67,6 @@ def show_student_profile(bracelet):
     profile_window.attributes('-fullscreen', True)
     profile_window.configure(bg="#FFF9E3")
 
-    # Back Button
     back_button = tk.Button(profile_window, text="🔙 Back", command=profile_window.destroy,
                              font=("Comic Sans MS", 14), bg="#FFCCCB", fg="black")
     back_button.pack(anchor="ne", padx=10, pady=10)
@@ -76,9 +78,7 @@ def show_student_profile(bracelet):
 
     scrollable_frame.bind(
         "<Configure>",
-        lambda e: canvas.configure(
-            scrollregion=canvas.bbox("all")
-        )
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
     )
 
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
@@ -99,7 +99,10 @@ def show_student_profile(bracelet):
     avatar_label.grid(row=0, column=0, rowspan=3, padx=20, pady=10)
 
     name_label = tk.Label(scrollable_frame, text=f"👦 Name: {student['studentname']}", font=("Comic Sans MS", 18, "bold"), bg="#FFF9E3")
-    bracelet_label = tk.Label(scrollable_frame, text=f"🎟️ Bracelet #: {student['bracelet']}", font=("Comic Sans MS", 16), bg="#FFF9E3")
+    bracelet_label = tk.Label(scrollable_frame,
+                              text=f"🎟️ Bracelet #: {student['bracelet_id']}",
+                              font=("Comic Sans MS", 16), bg="#FFF9E3")
+
     subjects_label = tk.Label(scrollable_frame, text=f"📚 Subjects Enrolled: {len(student['total_subjects'])}", font=("Comic Sans MS", 16), bg="#FFF9E3")
 
     name_label.grid(row=0, column=1, sticky="w")
@@ -130,7 +133,6 @@ def show_student_profile(bracelet):
         view_button.grid(row=row, column=1, sticky="e")
         row += 1
 
-        # Subject-specific progress bar
         subject_total = len(subject['lessons'])
         subject_completed = sum(1 for l in subject['lessons'] if l['score'] is not None)
         subject_percent = (subject_completed / subject_total) * 100 if subject_total > 0 else 0
@@ -144,42 +146,55 @@ def show_student_profile(bracelet):
 
         row += 2
 
-# --- GUI Setup ---
-window = tk.Tk()
-window.title("AlphaBot - Student Profile Viewer")
-window.attributes('-fullscreen', True)
-window.configure(bg="#FFF9E3")
+# ✅ Eto yung function na tatawagin sa Flask route
+def launch_progressTracking_gui():
+    window = tk.Tk()
+    window.title("AlphaBot - Student Profile Viewer")
+    window.attributes('-fullscreen', True)
+    window.configure(bg="#FFF9E3")
 
-# --- Title ---
-tk.Label(window, text="📚 AlphaBot - Student Profile Progress Viewer", font=("Comic Sans MS", 26, "bold"),
-         bg="#FFF9E3", fg="#FF7F50").pack(pady=20)
+    tk.Label(window, text="📚 AlphaBot - Student Profile Progress Viewer", font=("Comic Sans MS", 26, "bold"),
+            bg="#FFF9E3", fg="#FF7F50").pack(pady=20)
 
-# --- Bracelet Buttons ---
-button_frame = tk.Frame(window, bg="#FFF9E3")
-button_frame.pack(pady=10)
+    button_frame = tk.Frame(window, bg="#FFF9E3")
+    button_frame.pack(pady=10)
 
-colors = ["#FFB6C1", "#ADD8E6", "#90EE90", "#FFD700", "#FFA07A", "#DDA0DD",
-          "#F08080", "#87CEFA", "#FF69B4", "#00FA9A", "#FFA500", "#B0E0E6"]
+    colors = ["#FFB6C1", "#ADD8E6", "#90EE90", "#FFD700", "#FFA07A", "#DDA0DD",
+            "#F08080", "#87CEFA", "#FF69B4", "#00FA9A", "#FFA500", "#B0E0E6"]
 
-def on_enter(e):
-    e.widget.config(bg="#ffffff", fg="black")
+    def on_enter(e):
+        e.widget.config(bg="#ffffff", fg="black")
 
-def on_leave(e, color):
-    e.widget.config(bg=color, fg="black")
+    def on_leave(e, color):
+        e.widget.config(bg=color, fg="black")
 
-for i in range(1, 13):
-    color = colors[i - 1]
-    btn = tk.Button(button_frame, text=f"Student {i}", width=12, height=3,
-                    font=("Comic Sans MS", 12, "bold"), bg=color, fg="black",
-                    command=lambda b=str(i): show_student_profile(b))
-    btn.grid(row=(i-1)//4, column=(i-1)%4, padx=15, pady=15)
-    btn.bind("<Enter>", on_enter)
-    btn.bind("<Leave>", lambda e, c=color: on_leave(e, c))
+    for i in range(1, 13):
+        color = colors[i - 1]
+        bracelet_id = f"Student{i}" # format for db
+        btn = tk.Button(
+            button_frame,
+            text=f"Student {i}",
+            width=12,
+            height=3,
+            font=("Comic Sans MS", 12, "bold"),
+            bg=color,
+            fg="black",
+            command=lambda b=bracelet_id: show_student_profile(b)  # ito na ang ipapasa
+        )
+        btn.grid(row=(i - 1) // 4, column=(i - 1) % 4, padx=15, pady=15)
+        btn.bind("<Enter>", on_enter)
+        btn.bind("<Leave>", lambda e, c=color: on_leave(e, c))
 
-# --- Exit Button ---
-exit_button = tk.Button(window, text="❌ Exit", font=("Comic Sans MS", 16, "bold"),
-                        bg="#FF6666", fg="white", padx=20, pady=10,
-                        command=window.destroy)
-exit_button.pack(pady=30)
+    exit_button = tk.Button(
+        window,
+        text="❌ Exit",
+        font=("Comic Sans MS", 16, "bold"),
+        bg="#FF6666",
+        fg="white",
+        padx=20,
+        pady=10,
+        command=window.destroy
+    )
+    exit_button.pack(pady=30)
 
-window.mainloop()
+    window.mainloop()
