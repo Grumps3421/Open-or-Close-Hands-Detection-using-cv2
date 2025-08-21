@@ -3,24 +3,11 @@ import os
 import cv2
 import mediapipe as mp
 from ultralytics import YOLO
-from pymongo import MongoClient
 
-# MongoDB setup
-client = MongoClient("mongodb://localhost:27017/")
-db = client["alphabot_db"]
-collection = db["registered_students"]
+from lib.db_config import registered_student_collection
+from services.load_class_name_map import load_class_name_map
 
-def load_class_name_map():
-    """Fetch all students with bracelets from MongoDB."""
-    class_name_map = {}
-    students = collection.find({})  # lahat ng may bracelet_id
-    for student in students:
-        bracelet_id = student["bracelet_id"].strip().lower().replace(" ", "")
-        student_name = student["student_name"]
-        color = student.get("color", "Unknown")
-        class_name_map[bracelet_id] = f"{student_name} | {color}"
-    print(f"DEBUG: Loaded {len(class_name_map)} bracelet mappings from DB")
-    return class_name_map
+
 
 
 class StudentDetector:
@@ -42,6 +29,8 @@ class StudentDetector:
             min_tracking_confidence=0.7
         )
 
+        self.class_name_map = load_class_name_map()
+
     def get_hand_status(self, landmarks):
         tip_ids = [8, 12, 16, 20]
         fingers = [1 if landmarks[tip].y < landmarks[tip - 2].y else 0 for tip in tip_ids]
@@ -54,44 +43,46 @@ class StudentDetector:
             return "Close"
 
     def detect_frame(self, frame):
-        # YOLO detection
         detections = self.model(frame, verbose=False)[0].boxes
-        detected_classes = []
+        detected_students = []
 
+        # Step 1: YOLO bracelet detections
         for det in detections:
             conf = det.conf.item()
             cls_id = int(det.cls.item())
             cls_name = self.labels[cls_id]
             if conf >= self.thresh:
-                detected_classes.append(cls_name)
-                print(f"DEBUG: YOLO detected class={cls_name} conf={conf:.2f}")
+                student_doc = registered_student_collection.find_one({"bracelet_id": cls_name})
+                if student_doc:
+                    x1, y1, x2, y2 = map(int, det.xyxy[0].tolist())  # bounding box
+                    detected_students.append({
+                        "name": student_doc["student_name"],
+                        "box": (x1, y1, x2, y2),
+                        "hand_status": "None"
+                    })
 
-        # MediaPipe hand detection
+        # Step 2: MediaPipe hand detection
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.hands.process(rgb)
-        hand_status = None
+
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                hand_status = self.get_hand_status(hand_landmarks.landmark)
+                # get hand bounding box
+                h, w, _ = frame.shape
+                xs = [lm.x * w for lm in hand_landmarks.landmark]
+                ys = [lm.y * h for lm in hand_landmarks.landmark]
+                hx1, hy1, hx2, hy2 = int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))
+
+                # Step 3: Find the closest bracelet box
+                for student in detected_students:
+                    sx1, sy1, sx2, sy2 = student["box"]
+                    # check overlap
+                    if hx1 < sx2 and hx2 > sx1 and hy1 < sy2 and hy2 > sy1:
+                        student["hand_status"] = self.get_hand_status(hand_landmarks.landmark)
+
                 self.mp_drawing.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
-        # Map detected YOLO classes to student names via MongoDB bracelet_id lookup
-        student_names = []
-        for cls in detected_classes:
-            # Hanapin kung may bracelet_id match sa DB
-            student_doc = collection.find_one({"bracelet_id": cls})
-            if student_doc:
-                student_names.append(student_doc["student_name"])
-
-        if student_names:
-            student_names = list(set(student_names))  # remove duplicates
-        else:
-            student_names = ["No bracelet detected"]
-
-        if not hand_status:
-            hand_status = "None"
-
-        return frame, student_names, hand_status
+        return frame, detected_students
 
     def release(self):
         self.hands.close()
@@ -104,17 +95,27 @@ class StudentDetector:
             if not ret:
                 break
 
-            frame, student_names, hand_status = self.detect_frame(frame)
-            output_text = f"{', '.join(student_names)} | hand status: {hand_status}"
-            print(output_text)
-            
-            if student_names and student_names[0] != "No Bracelet detected":
-                print("Bracelet Detected , Stopping YOLO!!")
-                break
+            frame, detected_students = self.detect_frame(frame)
+
+            # Build output text for each detected student
+            if detected_students:
+                student = detected_students[0]  # ✅ only first student
+                output_text = f"{student['name']} | Hand Status: {student['hand_status']}"
+                print(output_text)
+
+                if show_window:
+                    x1, y1, x2, y2 = student["box"]
+                    cv2.putText(frame, output_text, (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2, cv2.LINE_AA)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            else:
+                print("No bracelet detected")
+                output_text = "No bracelet detected"
+                if show_window:
+                    cv2.putText(frame, output_text, (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
 
             if show_window:
-                cv2.putText(frame, output_text, (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
                 cv2.imshow("YOLO detection results", frame)
 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
