@@ -1,68 +1,74 @@
-from flask import Blueprint  , request, jsonify
+from flask import Blueprint, request, jsonify
 from checking_answer import check_answer
 from lib.db_config import students_collection
 from datetime import datetime, timezone
 
-close_bp = Blueprint("close_bp" , __name__)
+close_bp = Blueprint("close_bp", __name__)
 
-@close_bp.route("/close", methods=["POST" , "GET"])
+@close_bp.route("/close", methods=["POST"])
 def detect_hand_status():
-    data = request.json
+    data = request.json or {}
     choice = data.get("choice")
     question = data.get("question")
     subject = data.get("subject")
     lesson = data.get("lesson")
 
-    print("📩 Received choice from Next.js:", choice)
-
-    # Check if "choice" was provided
-    if not choice:
+    if not choice or not question:
         return jsonify({
             "status": "error",
-            "message": "❌ No choice provided"
+            "message": "❌ Missing required fields"
         }), 400
 
     # Run webcam hand detection
     result = check_answer()
     print(f"🖐️ Hand detection result: {result}")
-    print(f"Question from frontend: {question}")
-    print(f"subject from frontend: {subject}")
-    print(f"lesson from frontend: {lesson}")
 
-    log_entry = {
-        "student name": result["student name"],
-        "bracelet_id": result["bracelet_id"],
+    student_name = result.get("student name")
+    bracelet_id = result.get("bracelet_id")
+    hand_status = result.get("hand_status")
+    detect_result = result.get("detect")
 
-        "choice": choice,
+    # Build question entry
+    question_entry = {
         "question": question,
+        "answer": hand_status if detect_result in ["correct", "wrong"] else None
+    }
+
+    # Check if student record already exists
+    student_doc = students_collection.find_one({
+        "student name": student_name,
+    })
+
+    if not student_doc:
+        # If no record yet → create one with this first question
+        new_doc = {
+            "student name": student_name,
+            "bracelet_id": bracelet_id,
+            "subject": subject,
+            "lesson": lesson,
+            "questions": [question_entry],
+            "created_at": datetime.now(timezone.utc),
+            "last_updated": datetime.now(timezone.utc)
+        }
+        students_collection.insert_one(new_doc)
+    else:
+        # If record exists → just update + push new question
+        students_collection.update_one(
+            {
+                "student name": student_name,
+            },
+            {
+                "$set": {"last_updated": datetime.now(timezone.utc)},
+                "$push": {"questions": question_entry}
+            }
+        )
+
+    return jsonify({
+        "status": "success",
+        "message": f"✅ Logged answer for {student_name}",
+        "student": student_name,
+        "bracelet_id": bracelet_id,
         "subject": subject,
         "lesson": lesson,
-        "answer": result["detect"],
-        "hand Status" : result["hand_status"],
-        "timestamp": datetime.now(timezone.utc)
-    }
-    students_collection.insert_one(log_entry)
-
-
-    # Return success if gesture is valid
-    if result in ["correct", "wrong"]:
-        return jsonify({
-            "status": "success",
-            "message": f"✅ Detected: {result}",
-            "detected": result,
-            "choice": choice ,
-            "question": question ,
-            "subject":subject ,
-            "lesson" : lesson
-        }), 200
-
-    # Otherwise return a "Conflict" (409) for no valid hand gesture
-    return jsonify({
-        "status": "no-gesture",
-        "message": "⚠️ No valid hand gesture detected.",
-        "detected": result,
-        "choice": choice,
-        "question":question ,
-        "subject": subject,
-        "lesson": lesson
-    }), 409
+        "question_logged": question_entry
+    }), 200

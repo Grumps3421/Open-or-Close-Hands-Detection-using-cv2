@@ -7,7 +7,7 @@ import os
 # MongoDB
 client = MongoClient("mongodb://localhost:27017/")
 db = client["alphabot_db"]
-collection = db["students"]
+collection = db["makabansa"]
 
 current_student = None
 
