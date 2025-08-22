@@ -1,19 +1,17 @@
+#progress_tracking.py
 import tkinter as tk
 from tkinter import messagebox, ttk, Toplevel
 from pymongo import MongoClient
 from PIL import Image, ImageTk
 import os
 
-# MongoDB
-client = MongoClient("mongodb://localhost:27017/")
-db = client["alphabot_db"]
-collection = db["makabansa"]
+from lib.db_config import students_collection
 
 current_student = None
 
 def show_subject_detail(subject):
     detail_window = Toplevel()
-    detail_window.title(subject['subject_name'])
+    detail_window.title(subject['subject'])
     detail_window.attributes('-fullscreen', True)
     detail_window.configure(bg="#FFF9E3")
 
@@ -56,7 +54,7 @@ def show_subject_detail(subject):
 def show_student_profile(bracelet):
     global current_student
     BRACELET_KEY = "bracelet_id"
-    student = collection.find_one({BRACELET_KEY: bracelet})
+    student = students_collection.find_one({BRACELET_KEY: bracelet})
     print(student)
     if not student:
         messagebox.showerror("Uh-oh!", f"Bracelet {bracelet} is not registered!")
@@ -153,14 +151,14 @@ def launch_progressTracking_gui():
     window.attributes('-fullscreen', True)
     window.configure(bg="#FFF9E3")
 
-    tk.Label(window, text="📚 AlphaBot - Student Profile Progress Viewer", font=("Comic Sans MS", 26, "bold"),
-            bg="#FFF9E3", fg="#FF7F50").pack(pady=20)
+    tk.Label(window, text="📚 AlphaBot - Student Profile Progress Viewer",
+             font=("Comic Sans MS", 26, "bold"), bg="#FFF9E3", fg="#FF7F50").pack(pady=20)
 
     button_frame = tk.Frame(window, bg="#FFF9E3")
     button_frame.pack(pady=10)
 
     colors = ["#FFB6C1", "#ADD8E6", "#90EE90", "#FFD700", "#FFA07A", "#DDA0DD",
-            "#F08080", "#87CEFA", "#FF69B4", "#00FA9A", "#FFA500", "#B0E0E6"]
+              "#F08080", "#87CEFA", "#FF69B4", "#00FA9A", "#FFA500", "#B0E0E6"]
 
     def on_enter(e):
         e.widget.config(bg="#ffffff", fg="black")
@@ -168,20 +166,22 @@ def launch_progressTracking_gui():
     def on_leave(e, color):
         e.widget.config(bg=color, fg="black")
 
-    for i in range(1, 13):
-        color = colors[i - 1]
-        bracelet_id = f"Student{i}" # format for db
+    students = list(students_collection.find({}))
+
+    for i, student in enumerate(students):
+        color = colors[i % len(colors)]
+        student_name = student['student name']  # Make sure your DB field matches
         btn = tk.Button(
             button_frame,
-            text=f"Student {i}",
+            text=f"{student_name}",
             width=12,
             height=3,
             font=("Comic Sans MS", 12, "bold"),
             bg=color,
             fg="black",
-            command=lambda b=bracelet_id: show_student_profile(b)  # ito na ang ipapasa
+            command=lambda b=student_name: show_student_profile(b)  # pass name to profile
         )
-        btn.grid(row=(i - 1) // 4, column=(i - 1) % 4, padx=15, pady=15)
+        btn.grid(row=i // 4, column=i % 4, padx=15, pady=15)
         btn.bind("<Enter>", on_enter)
         btn.bind("<Leave>", lambda e, c=color: on_leave(e, c))
 
@@ -198,3 +198,4 @@ def launch_progressTracking_gui():
     exit_button.pack(pady=30)
 
     window.mainloop()
+
