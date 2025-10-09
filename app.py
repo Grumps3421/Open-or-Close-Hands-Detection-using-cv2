@@ -17,7 +17,7 @@ app.register_blueprint(open_bp)
 app.register_blueprint(progressTracking_bp)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)
 
 
 
