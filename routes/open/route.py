@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 open_bp = Blueprint("open_bp", __name__)
 
 @open_bp.route("/open", methods=["POST"])
-def hand_status_reverse():
+def detect_open_hand_status():
     data = request.json or {}
     choice = data.get("choice")
 
@@ -16,28 +16,35 @@ def hand_status_reverse():
             "message": "❌ Missing required field: choice"
         }), 400
 
-    # Run webcam hand detection
+    # 🖐️ Run YOLO + MediaPipe hand detection (Open = correct)
     result = check_answer_result()
     print(f"🖐️ Hand detection result: {result}")
 
+    # Extract detection data
     student_name = result.get("student name")
     bracelet_id = result.get("bracelet_id")
-    detect_result = result.get("detect")       # "correct" / "wrong" / "no-gesture"
-    hand_status = result.get("hand_status")    # "Open" / "Close"
+    hand_status = result.get("hand_status")     # “Open” or “Close”
+    detect_result = result.get("detect")        # “correct”, “wrong”, “none”
 
-    # Build question entry (logging choice instead)
+    # Build question log entry
     question_entry = {
         "choice": choice,
         "answer": hand_status if detect_result in ["correct", "wrong"] else None
     }
 
-    # Check if student record already exists
-    student_doc = students_collection.find_one({
-        "student name": student_name,
-    })
+    # 🧠 If no student detected (e.g., camera failed)
+    if not student_name:
+        return jsonify({
+            "status": "no-student",
+            "message": "⚠️ No student detected.",
+            "choice_logged": question_entry
+        }), 409
+
+    # 🔍 Check if this student already exists
+    student_doc = students_collection.find_one({"student name": student_name})
 
     if not student_doc:
-        # Create new document for student
+        # 🆕 Create new record
         new_doc = {
             "student name": student_name,
             "bracelet_id": bracelet_id,
@@ -47,7 +54,7 @@ def hand_status_reverse():
         }
         students_collection.insert_one(new_doc)
     else:
-        # Update existing document
+        # 🔁 Update existing record
         students_collection.update_one(
             {"student name": student_name},
             {
@@ -56,16 +63,18 @@ def hand_status_reverse():
             }
         )
 
-    # Response handling
+    # 🧾 Response handling
     if detect_result in ["correct", "wrong"]:
         return jsonify({
             "status": "success",
             "message": f"✅ Detected: {detect_result}",
             "student": student_name,
             "bracelet_id": bracelet_id,
+            "hand_status": hand_status,
             "choice_logged": question_entry
         }), 200
 
+    # ⚠️ No valid hand gesture detected
     return jsonify({
         "status": "no-gesture",
         "message": "⚠️ No valid hand gesture detected.",

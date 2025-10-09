@@ -1,149 +1,113 @@
-# checking_answer.py
-import cv2
 import time
-from alphabotFunction.student_detector import StudentDetector, load_class_name_map
+from alphabotFunction.YoLo.my_model_final.yolo_detect import detect_student_and_hand
 
-model_path = 'C:\\Thesis\\backend\\Open-or-Close-Hands-Detection-using-cv2\\alphabotFunction\\my_model_final\\my_model.pt'
-threshold = 0.7
+# ✅ Model configuration
+MODEL_PATH = r"C:\THESIS\backend\Open-or-Close-Hands-Detection-using-cv2\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model"
+THRESHOLD = 0.7
 
 
+# ===========================================================
+# FUNCTION USED BY /close ROUTE
+# ===========================================================
 def check_answer():
-    cap = cv2.VideoCapture(0)
-    class_name_map = load_class_name_map()
-    detector = StudentDetector(model_path=model_path, thresh=threshold)
-    detector.class_name_map = class_name_map
-
+    """
+    Logic for /close route:
+    - 'Close' hand = correct
+    - 'Open' hand = wrong
+    """
     print("⌛ Waiting 2 seconds before detection...")
     time.sleep(2)
 
-    result = "none"
+    # Run YOLO + MediaPipe detection
+    student_name, hand_status = detect_student_and_hand(MODEL_PATH, THRESHOLD)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("❌ Error: Could not access webcam.")
-            break
+    # Default JSON
+    result_data = {
+        "detect": "none",
+        "student name": None,
+        "bracelet_id": None,
+        "hand_status": None,
+    }
 
-        frame, detected_students = detector.detect_frame(frame)
+    # If detection failed
+    if not student_name or not hand_status:
+        print("❌ No detection found.")
+        return result_data
 
-        if detected_students:
-            student = detected_students[0]  # ✅ only index 0
-            student_name = student["name"]
-            bracelet_id = student.get("bracelet_id", "Unknown")
-            hand_status = student["hand_status"]
+    # ✅ Normal logic (for close)
+    if hand_status.lower() == "close":
+        result = "correct"
+    elif hand_status.lower() == "open":
+        result = "wrong"
+    else:
+        result = "none"
 
-            # JSON FILE
-            result_data = {
-                "detected": "none",
-                "student name": None,
-                "bracelet_id": None,
-                "hand_status": None,
-            }
+    result_data = {
+        "detect": result,
+        "student name": student_name,
+        "bracelet_id": student_name,  # same as name if not mapped yet
+        "hand_status": hand_status,
+    }
 
-            has_bracelet = student_name != "No bracelet detected"
-            has_hand_status = hand_status in ["Open", "Close"]
-
-            if has_bracelet and has_hand_status:
-                if hand_status == "Close":
-                    result = "correct"
-                else:
-                    result = "wrong"
-
-                print(f"✅ Detected bracelet + hand status: {hand_status} → {result}")
-                print(f"student name : {student_name}")
-                print(f"hand status  : {hand_status}")
-                result_data = {
-                    "detect": result,
-                    "student name": student_name,
-                    "bracelet_id": bracelet_id,
-                    "hand_status": hand_status
-                }
-                break
-
-        else:
-            print("No valid detection")
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            print("🛑 Quit manually.")
-            break
-
-    cap.release()
-    detector.release()
-    cv2.destroyAllWindows()
+    print(f"✅ [CLOSE] Detected: {student_name} | Hand: {hand_status} → {result}")
     return result_data
 
 
+# ===========================================================
+# FUNCTION USED BY /open ROUTE
+# ===========================================================
 def check_answer_result():
-
-    cap = cv2.VideoCapture(0)
-    class_name_map = load_class_name_map()
-    detector = StudentDetector(model_path=model_path, thresh=threshold)
-    detector.class_name_map = class_name_map
-
+    """
+    Logic for /open route:
+    - 'Open' hand = correct
+    - 'Close' hand = wrong
+    """
     print("⌛ Waiting 2 seconds before detection...")
     time.sleep(2)
 
-    result = "none"
+    # Run YOLO + MediaPipe detection
+    student_name, hand_status = detect_student_and_hand(MODEL_PATH, THRESHOLD)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("❌ Error: Could not access webcam.")
-            break
+    # Default JSON
+    result_data = {
+        "detect": "none",
+        "student name": None,
+        "bracelet_id": None,
+        "hand_status": None,
+    }
 
-        frame, detected_students = detector.detect_frame(frame)
+    # If detection failed
+    if not student_name or not hand_status:
+        print("❌ No detection found.")
+        return result_data
 
-        if detected_students:
-            student = detected_students[0]  # ✅ only index 0
-            student_name = student["name"]
-            bracelet_id = student.get("bracelet_id", "Unknown")
-            hand_status = student["hand_status"]
+    # ✅ Reversed logic (for open)
+    if hand_status.lower() == "open":
+        result = "correct"
+    elif hand_status.lower() == "close":
+        result = "wrong"
+    else:
+        result = "none"
 
-            #JSON file return
-            result_data = {
-                "detected": "none",
-                "student name": None,
-                "bracelet_id": None,
-                "hand_status": None,
-            }
+    result_data = {
+        "detect": result,
+        "student name": student_name,
+        "bracelet_id": student_name,
+        "hand_status": hand_status,
+    }
 
-            has_bracelet = student_name != "No bracelet detected"
-            has_hand_status = hand_status in ["Open", "Close"]
-
-            if has_bracelet and has_hand_status:
-                if hand_status == "Close":
-                    result = "wrong"
-                else:
-                    result = "correct"
-
-                print(f"✅ Detected bracelet + hand status: {hand_status} → {result}")
-                print(f"student name : {student_name}")
-                print(f"hand status  : {hand_status}")
-
-                result_data = {
-                    "detect" : result ,
-                    "student name": student_name,
-                    "bracelet_id": bracelet_id,
-                    "hand_status": hand_status
-                }
-                break
-
-
-        cv2.imshow("Hand Detection", frame)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            print("🛑 Quit manually.")
-            break
-
-    cap.release()
-    detector.release()
-    cv2.destroyAllWindows()
+    print(f"✅ [OPEN] Detected: {student_name} | Hand: {hand_status} → {result}")
     return result_data
 
 
-# ✅ Optional: Run directly to test
+# ===========================================================
+# OPTIONAL TESTING
+# ===========================================================
 if __name__ == "__main__":
-    check_answer = check_answer()
-    check_answer_result = check_answer_result()
-    print("Final result of check answer:", check_answer)
-    print("Final result of Checking_answer_result: " , check_answer_result)
+    print("Testing both functions...\n")
+
+    close_result = check_answer()
+    print("\nFinal result of check_answer (/close):", close_result)
+
+    open_result = check_answer_result()
+    print("\nFinal result of check_answer_result (/open):", open_result)

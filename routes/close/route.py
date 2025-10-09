@@ -16,7 +16,7 @@ def detect_hand_status():
             "message": "❌ Missing required field: choice"
         }), 400
 
-    # Run webcam hand detection
+    # ✅ Run YOLO + MediaPipe detection
     result = check_answer()
     print(f"🖐️ Hand detection result: {result}")
 
@@ -25,19 +25,27 @@ def detect_hand_status():
     hand_status = result.get("hand_status")
     detect_result = result.get("detect")
 
-    # Build question entry (just logging the choice)
+    # If detection failed (no student detected)
+    if not student_name:
+        return jsonify({
+            "status": "error",
+            "message": "❌ No student detected. Try again.",
+            "details": result
+        }), 400
+
+    # ✅ Store data for this attempt
     question_entry = {
         "choice": choice,
-        "answer": hand_status if detect_result in ["correct", "wrong"] else None
+        "answer": hand_status if detect_result in ["correct", "wrong"] else None,
+        "detect_result": detect_result,
+        "timestamp": datetime.now(timezone.utc)
     }
 
-    # Check if student record already exists
-    student_doc = students_collection.find_one({
-        "student name": student_name,
-    })
+    # ✅ Check if student exists in DB
+    student_doc = students_collection.find_one({"student name": student_name})
 
     if not student_doc:
-        # If no record yet → create one with this first question
+        # Create new record
         new_doc = {
             "student name": student_name,
             "bracelet_id": bracelet_id,
@@ -47,7 +55,7 @@ def detect_hand_status():
         }
         students_collection.insert_one(new_doc)
     else:
-        # If record exists → just update + push new question
+        # Update existing record
         students_collection.update_one(
             {"student name": student_name},
             {
