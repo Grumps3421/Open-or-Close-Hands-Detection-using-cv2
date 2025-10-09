@@ -9,14 +9,11 @@ open_bp = Blueprint("open_bp", __name__)
 def hand_status_reverse():
     data = request.json or {}
     choice = data.get("choice")
-    question = data.get("question")
-    subject = data.get("subject")
-    lesson = data.get("lesson")
 
-    if not choice or not question:
+    if not choice:
         return jsonify({
             "status": "error",
-            "message": "❌ Missing required fields"
+            "message": "❌ Missing required field: choice"
         }), 400
 
     # Run webcam hand detection
@@ -28,9 +25,9 @@ def hand_status_reverse():
     detect_result = result.get("detect")       # "correct" / "wrong" / "no-gesture"
     hand_status = result.get("hand_status")    # "Open" / "Close"
 
-    # Build question entry
+    # Build question entry (logging choice instead)
     question_entry = {
-        "question": question,
+        "choice": choice,
         "answer": hand_status if detect_result in ["correct", "wrong"] else None
     }
 
@@ -44,8 +41,6 @@ def hand_status_reverse():
         new_doc = {
             "student name": student_name,
             "bracelet_id": bracelet_id,
-            "subject": subject,
-            "lesson": lesson,
             "questions": [question_entry],
             "created_at": datetime.now(timezone.utc),
             "last_updated": datetime.now(timezone.utc)
@@ -54,9 +49,7 @@ def hand_status_reverse():
     else:
         # Update existing document
         students_collection.update_one(
-            {
-                "student name": student_name,
-            },
+            {"student name": student_name},
             {
                 "$set": {"last_updated": datetime.now(timezone.utc)},
                 "$push": {"questions": question_entry}
@@ -70,10 +63,7 @@ def hand_status_reverse():
             "message": f"✅ Detected: {detect_result}",
             "student": student_name,
             "bracelet_id": bracelet_id,
-            "choice": choice,
-            "question_logged": question_entry,
-            "subject": subject,
-            "lesson": lesson
+            "choice_logged": question_entry
         }), 200
 
     return jsonify({
@@ -81,8 +71,5 @@ def hand_status_reverse():
         "message": "⚠️ No valid hand gesture detected.",
         "student": student_name,
         "bracelet_id": bracelet_id,
-        "choice": choice,
-        "question": question,
-        "subject": subject,
-        "lesson": lesson
+        "choice_logged": question_entry
     }), 409

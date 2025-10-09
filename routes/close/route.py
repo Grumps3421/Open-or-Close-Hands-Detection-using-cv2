@@ -9,14 +9,11 @@ close_bp = Blueprint("close_bp", __name__)
 def detect_hand_status():
     data = request.json or {}
     choice = data.get("choice")
-    question = data.get("question")
-    subject = data.get("subject")
-    lesson = data.get("lesson")
 
-    if not choice or not question:
+    if not choice:
         return jsonify({
             "status": "error",
-            "message": "❌ Missing required fields"
+            "message": "❌ Missing required field: choice"
         }), 400
 
     # Run webcam hand detection
@@ -28,9 +25,9 @@ def detect_hand_status():
     hand_status = result.get("hand_status")
     detect_result = result.get("detect")
 
-    # Build question entry
+    # Build question entry (just logging the choice)
     question_entry = {
-        "question": question,
+        "choice": choice,
         "answer": hand_status if detect_result in ["correct", "wrong"] else None
     }
 
@@ -44,8 +41,6 @@ def detect_hand_status():
         new_doc = {
             "student name": student_name,
             "bracelet_id": bracelet_id,
-            "subject": subject,
-            "lesson": lesson,
             "questions": [question_entry],
             "created_at": datetime.now(timezone.utc),
             "last_updated": datetime.now(timezone.utc)
@@ -54,9 +49,7 @@ def detect_hand_status():
     else:
         # If record exists → just update + push new question
         students_collection.update_one(
-            {
-                "student name": student_name,
-            },
+            {"student name": student_name},
             {
                 "$set": {"last_updated": datetime.now(timezone.utc)},
                 "$push": {"questions": question_entry}
@@ -65,10 +58,8 @@ def detect_hand_status():
 
     return jsonify({
         "status": "success",
-        "message": f"✅ Logged answer for {student_name}",
+        "message": f"✅ Logged choice for {student_name}",
         "student": student_name,
         "bracelet_id": bracelet_id,
-        "subject": subject,
-        "lesson": lesson,
-        "question_logged": question_entry
+        "choice_logged": question_entry
     }), 200
