@@ -1,16 +1,12 @@
-from flask import Blueprint, request, jsonify
-import threading
-from alphabotFunction.progress_tracking import launch_progressTracking_gui
+import subprocess
+
+from flask import Blueprint, Response
+
 
 progressTracking_bp = Blueprint("progressTracking_bp", __name__)
 
-@progressTracking_bp.route("/progressTracking", methods=["GET", "POST"])
+@progressTracking_bp.route("/run-script2", methods=["GET", "POST"])
 def progressTracking():
-    # Check if thread already running
-    if not any(thread.name == "progressTracking_gui" for thread in threading.enumerate()):
-        t = threading.Thread(target=launch_progressTracking_gui, name="progressTracking_gui")
-        t.daemon = True
-        t.start()
-        return jsonify({"status": "GUI Launched"})
-    else:
-        return jsonify({"status": "Already Running"})
+    register_path = "C:\\Programming\\Thesis\\progress_students_MVC\\app_progress.py"
+    subprocess.Popen(["python", register_path])
+    return Response(status=204)
