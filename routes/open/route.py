@@ -1,14 +1,16 @@
 from flask import Blueprint, request, jsonify
 from checking_answer import check_answer_result
-from lib.db_config import students_collection
 from datetime import datetime, timezone
-
+from register_students_MVC.model import BraceletModelRegister
 open_bp = Blueprint("open_bp", __name__)
+bracelet_model = BraceletModelRegister()  # Initialize model
 
 @open_bp.route("/open", methods=["POST"])
 def detect_open_hand_status():
     data = request.json or {}
     choice = data.get("choice")
+    allowed_student = data.get("allowedStudent")  # Optional
+    target_bracelet_id = data.get("braceletId")  # Optional filter
 
     if not choice:
         return jsonify({
@@ -16,69 +18,53 @@ def detect_open_hand_status():
             "message": "❌ Missing required field: choice"
         }), 400
 
-    # 🖐️ Run YOLO + MediaPipe hand detection (Open = correct)
-    result = check_answer_result()
-    print(f"🖐️ Hand detection result: {result}")
+    # ✅ If allowed_student exists, skip detection
+    if allowed_student:
+        student_name = allowed_student
+        bracelet_id = target_bracelet_id
+        hand_status = "open"
+        detect_result = "ready"
+        result = {}
+    else:
+        # Run YOLO + MediaPipe detection
+        result = check_answer_result()
+        print(f"🖐️ Hand detection result: {result}")
+        student_name = result.get("student name")
+        bracelet_id = result.get("bracelet_id")
+        hand_status = result.get("hand_status").lower()  # lowercase for model
+        detect_result = result.get("detect")
 
-    # Extract detection data
-    student_name = result.get("student name")
-    bracelet_id = result.get("bracelet_id")
-    hand_status = result.get("hand_status")     # “Open” or “Close”
-    detect_result = result.get("detect")        # “correct”, “wrong”, “none”
+        # 🔒 FILTER: If target_bracelet_id is provided, only accept matching bracelets
+        if target_bracelet_id:
+            if not bracelet_id:
+                return jsonify({
+                    "status": "no-bracelet",
+                    "message": "⚠️ No bracelet detected.",
+                    "expected_bracelet": target_bracelet_id
+                }), 409
+            if str(bracelet_id).strip() != str(target_bracelet_id).strip():
+                return jsonify({
+                    "status": "unauthorized",
+                    "message": f"⚠️ Wrong bracelet detected. Please use your registered bracelet.",
+                    "detected_bracelet": bracelet_id,
+                    "expected_bracelet": target_bracelet_id
+                }), 403
 
-    # Build question log entry
-    question_entry = {
-        "choice": choice,
-        "answer": hand_status if detect_result in ["correct", "wrong"] else None
-    }
-
-    # 🧠 If no student detected (e.g., camera failed)
     if not student_name:
         return jsonify({
             "status": "no-student",
             "message": "⚠️ No student detected.",
-            "choice_logged": question_entry
         }), 409
 
-    # 🔍 Check if this student already exists
-    student_doc = students_collection.find_one({"student name": student_name})
+    # Update score using BraceletModelRegister
+    update_message = bracelet_model.update_student_score(result)
+    print(f"📊 Update message: {update_message}")
 
-    if not student_doc:
-        # 🆕 Create new record
-        new_doc = {
-            "student name": student_name,
-            "bracelet_id": bracelet_id,
-            "questions": [question_entry],
-            "created_at": datetime.now(timezone.utc),
-            "last_updated": datetime.now(timezone.utc)
-        }
-        students_collection.insert_one(new_doc)
-    else:
-        # 🔁 Update existing record
-        students_collection.update_one(
-            {"student name": student_name},
-            {
-                "$set": {"last_updated": datetime.now(timezone.utc)},
-                "$push": {"questions": question_entry}
-            }
-        )
-
-    # 🧾 Response handling
-    if detect_result in ["correct", "wrong"]:
-        return jsonify({
-            "status": "success",
-            "message": f"✅ Detected: {detect_result}",
-            "student": student_name,
-            "bracelet_id": bracelet_id,
-            "hand_status": hand_status,
-            "choice_logged": question_entry
-        }), 200
-
-    # ⚠️ No valid hand gesture detected
     return jsonify({
-        "status": "no-gesture",
-        "message": "⚠️ No valid hand gesture detected.",
+        "status": "success",
+        "message": f"✅ Logged choice for {student_name}",
         "student": student_name,
         "bracelet_id": bracelet_id,
-        "choice_logged": question_entry
-    }), 409
+        "hand_status": hand_status,
+        "update_message": update_message
+    }), 200

@@ -1,14 +1,17 @@
 from flask import Blueprint, request, jsonify
 from checking_answer import check_answer
-from lib.db_config import students_collection
+from register_students_MVC.model import BraceletModelRegister
 from datetime import datetime, timezone
 
 close_bp = Blueprint("close_bp", __name__)
+bracelet_model = BraceletModelRegister()  # Initialize model
 
 @close_bp.route("/close", methods=["POST"])
 def detect_hand_status():
     data = request.json or {}
     choice = data.get("choice")
+    allowed_student = data.get("allowedStudent")  # Optional
+    target_bracelet_id = data.get("braceletId")  # Optional filter
 
     if not choice:
         return jsonify({
@@ -16,16 +19,38 @@ def detect_hand_status():
             "message": "❌ Missing required field: choice"
         }), 400
 
-    # ✅ Run YOLO + MediaPipe detection
-    result = check_answer()
-    print(f"🖐️ Hand detection result: {result}")
+    # ✅ If allowed_student exists, skip detection
+    if allowed_student:
+        student_name = allowed_student
+        bracelet_id = target_bracelet_id
+        hand_status = "close"
+        detect_result = "ready"
+        result = {}
+    else:
+        # Run YOLO + MediaPipe detection
+        result = check_answer()
+        print(f"🖐️ Hand detection result: {result}")
+        student_name = result.get("student name")
+        bracelet_id = result.get("bracelet_id")
+        hand_status = result.get("hand_status").lower()  # lowercase for model
+        detect_result = result.get("detect")
 
-    student_name = result.get("student name")
-    bracelet_id = result.get("bracelet_id")
-    hand_status = result.get("hand_status")
-    detect_result = result.get("detect")
+        # 🔒 FILTER: If target_bracelet_id is provided, only accept matching bracelets
+        if target_bracelet_id:
+            if not bracelet_id:
+                return jsonify({
+                    "status": "no-bracelet",
+                    "message": "⚠️ No bracelet detected.",
+                    "expected_bracelet": target_bracelet_id
+                }), 409
+            if str(bracelet_id).strip() != str(target_bracelet_id).strip():
+                return jsonify({
+                    "status": "unauthorized",
+                    "message": f"⚠️ Wrong bracelet detected. Please use your registered bracelet.",
+                    "detected_bracelet": bracelet_id,
+                    "expected_bracelet": target_bracelet_id
+                }), 403
 
-    # If detection failed (no student detected)
     if not student_name:
         return jsonify({
             "status": "error",
@@ -33,41 +58,15 @@ def detect_hand_status():
             "details": result
         }), 400
 
-    # ✅ Store data for this attempt
-    question_entry = {
-        "choice": choice,
-        "answer": hand_status if detect_result in ["correct", "wrong"] else None,
-        "detect_result": detect_result,
-        "timestamp": datetime.now(timezone.utc)
-    }
-
-    # ✅ Check if student exists in DB
-    student_doc = students_collection.find_one({"student name": student_name})
-
-    if not student_doc:
-        # Create new record
-        new_doc = {
-            "student name": student_name,
-            "bracelet_id": bracelet_id,
-            "questions": [question_entry],
-            "created_at": datetime.now(timezone.utc),
-            "last_updated": datetime.now(timezone.utc)
-        }
-        students_collection.insert_one(new_doc)
-    else:
-        # Update existing record
-        students_collection.update_one(
-            {"student name": student_name},
-            {
-                "$set": {"last_updated": datetime.now(timezone.utc)},
-                "$push": {"questions": question_entry}
-            }
-        )
+    # Update score using BraceletModelRegister
+    update_message = bracelet_model.update_student_score(result)
+    print(f"📊 Update message: {update_message}")
 
     return jsonify({
         "status": "success",
         "message": f"✅ Logged choice for {student_name}",
         "student": student_name,
         "bracelet_id": bracelet_id,
-        "choice_logged": question_entry
+        "hand_status": hand_status,
+        "update_message": update_message
     }), 200

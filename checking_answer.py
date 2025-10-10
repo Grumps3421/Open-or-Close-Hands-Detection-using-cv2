@@ -103,7 +103,7 @@ def check_answer_result():
 # ===========================================================
 # OPTIONAL TESTING
 # ===========================================================
-if __name__ == "__main__":
+if __name__ == "_main_":
     print("Testing both functions...\n")
 
     close_result = check_answer()
