@@ -1,13 +1,12 @@
 import os
 import sys
-import argparse
-import mediapipe as mp
 import time
 import cv2
-from ultralytics import YOLO
-from pymongo import MongoClient
 import tkinter as tk
 from tkinter import messagebox
+import mediapipe as mp
+from ultralytics import YOLO
+from pymongo import MongoClient
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -26,21 +25,18 @@ def load_class_name_map():
 
 class_name_map = load_class_name_map()
 
-
 # =========================
 # YOLO + MediaPipe Detection
 # =========================
+MODEL_PATH = r"C:\Thesis\backend\Open-or-Close-Hands-Detection-using-cv2\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model"  # <- full model file
+CONF_THRESHOLD = 0.7
+
+if not os.path.exists(MODEL_PATH):
+    print(f"Model Not Found at {MODEL_PATH}")
+    sys.exit(1)
+
 def start_detection(allowed_bracelet):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='C:\\Programming\\Thesis\\YoLo\\my_model_final\\bracelet_identification_ncnn_model')
-    parser.add_argument('--thresh', type=float, default=0.7)
-    args = parser.parse_args()
-
-    if not os.path.exists(args.model):
-        print("Model Not Found")
-        sys.exit(1)
-
-    model = YOLO(args.model, task='detect')
+    model = YOLO(MODEL_PATH, task='detect')
     labels = model.names
 
     mp_hands = mp.solutions.hands
@@ -54,9 +50,7 @@ def start_detection(allowed_bracelet):
                         max_num_hands=6) as hands:
         while True:
             elapsed = time.time() - start_time
-            remaining = int(duration - elapsed)
-
-            if remaining <= 0:
+            if elapsed >= duration:
                 print("\n⏹️ 10 seconds elapsed. Stopping program...")
                 break
 
@@ -87,13 +81,13 @@ def start_detection(allowed_bracelet):
             detected_classes = []
             for det in detections:
                 conf = det.conf.item()
-                if conf < args.thresh:
+                if conf < CONF_THRESHOLD:
                     continue
                 cls_id = int(det.cls.item())
                 cls_name = labels[cls_id]
                 detected_classes.append(cls_name)
 
-            # === Only Detect Logged-In Student ===
+            # Only detect logged-in student
             if allowed_bracelet in detected_classes:
                 student_name = class_name_map.get(allowed_bracelet, allowed_bracelet)
                 if hand_status:
@@ -103,37 +97,24 @@ def start_detection(allowed_bracelet):
                     print(f"\n⚠️ Other bracelets detected, ignoring...")
 
     cap.release()
-    # (No destroyAllWindows for headless environment)
-
 
 # =========================
 # Scan bracelet using YOLO
 # =========================
 def scan_bracelet(entry_field, result_label):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', default='C:\\Programming\\Thesis\\YoLo\\my_model_final\\bracelet_identification_ncnn_model')
-    parser.add_argument('--thresh', type=float, default=0.7)
-    args = parser.parse_args()
-
-    if not os.path.exists(args.model):
-        messagebox.showerror("Error", "YOLO model not found.")
-        return
-
-    model = YOLO(args.model, task='detect')
+    model = YOLO(MODEL_PATH, task='detect')
     labels = model.names
 
     cap = cv2.VideoCapture(0)
     start_time = time.time()
-    duration = 8  # seconds to scan bracelet
-
+    duration = 8  # seconds
     detected_bracelet = None
+
     result_label.config(text="📸 Scanning for bracelet... (show your bracelet to the camera)", fg="black")
 
     while True:
         elapsed = time.time() - start_time
-        remaining = int(duration - elapsed)
-
-        if remaining <= 0 or detected_bracelet:
+        if elapsed >= duration or detected_bracelet:
             break
 
         ret, frame = cap.read()
@@ -145,7 +126,7 @@ def scan_bracelet(entry_field, result_label):
 
         for det in detections:
             conf = det.conf.item()
-            if conf < args.thresh:
+            if conf < CONF_THRESHOLD:
                 continue
             cls_id = int(det.cls.item())
             cls_name = labels[cls_id]
@@ -165,7 +146,6 @@ def scan_bracelet(entry_field, result_label):
         )
     else:
         result_label.config(text="⚠️ No bracelet detected.", fg="red")
-
 
 # =========================
 # Tkinter GUI
@@ -198,7 +178,6 @@ def start_gui():
     root.attributes('-fullscreen', True)
     root.configure(bg="#f0f0f0")
 
-    # Center Frame for content
     frame = tk.Frame(root, bg="#f0f0f0")
     frame.place(relx=0.5, rely=0.5, anchor="center")
 
@@ -212,16 +191,13 @@ def start_gui():
     tk.Button(frame, text="✅ Login", command=login,
               width=15, height=2, bg="green", fg="white", font=("Arial", 14, "bold")).pack(pady=10)
 
-    # Result label
     result_label = tk.Label(frame, text="", font=("Arial", 14), wraplength=600, bg="#f0f0f0")
     result_label.pack(pady=20)
 
-    # Exit Button
     tk.Button(frame, text="❌ Exit", command=exit_app,
               width=10, height=1, bg="red", fg="white", font=("Arial", 12, "bold")).pack(pady=10)
 
     root.mainloop()
-
 
 # =========================
 # Run GUI
