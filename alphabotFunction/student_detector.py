@@ -8,8 +8,6 @@ from lib.db_config import registered_student_collection
 from services.load_class_name_map import load_class_name_map
 
 
-
-
 class StudentDetector:
     def __init__(self, model_path, thresh=0.5):  # lowered threshold for testing
         if not os.path.exists(model_path):
@@ -51,15 +49,24 @@ class StudentDetector:
             conf = det.conf.item()
             cls_id = int(det.cls.item())
             cls_name = self.labels[cls_id]
+            print(f"🔍 YOLO detected class: {cls_name} (conf={conf:.2f})")  # Debug line
+
             if conf >= self.thresh:
-                student_doc = registered_student_collection.find_one({"bracelet_id": cls_name})
+                # Case-insensitive match in DB
+                student_doc = registered_student_collection.find_one(
+                    {"bracelet_id": {"$regex": f"^{cls_name}$", "$options": "i"}}
+                )
+
                 if student_doc:
-                    x1, y1, x2, y2 = map(int, det.xyxy[0].tolist())  # bounding box
+                    x1, y1, x2, y2 = map(int, det.xyxy[0].tolist())
                     detected_students.append({
-                        "name": student_doc["student_name"],
+                        "name": student_doc["studentname"],  # ✅ corrected field
+                        "bracelet_id": student_doc["bracelet_id"],
                         "box": (x1, y1, x2, y2),
                         "hand_status": "None"
                     })
+                else:
+                    print(f"⚠️ No match in DB for bracelet_id='{cls_name}'")
 
         # Step 2: MediaPipe hand detection
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -67,7 +74,6 @@ class StudentDetector:
 
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                # get hand bounding box
                 h, w, _ = frame.shape
                 xs = [lm.x * w for lm in hand_landmarks.landmark]
                 ys = [lm.y * h for lm in hand_landmarks.landmark]
@@ -76,13 +82,13 @@ class StudentDetector:
                 # Step 3: Find the closest bracelet box
                 for student in detected_students:
                     sx1, sy1, sx2, sy2 = student["box"]
-                    # check overlap
                     if hx1 < sx2 and hx2 > sx1 and hy1 < sy2 and hy2 > sy1:
                         student["hand_status"] = self.get_hand_status(hand_landmarks.landmark)
 
                 self.mp_drawing.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
 
         return frame, detected_students
+
 
     def release(self):
         self.hands.close()
