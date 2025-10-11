@@ -5,7 +5,7 @@ from alphabotFunction.YoLo.my_model_final.yolo_detect import detect_student_and_
 # Constants
 MODEL_PATH = r"C:\THESIS\backend\Open-or-Close-Hands-Detection-using-cv2\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model"
 THRESHOLD = 0.7
-COOLDOWN = 3  # seconds
+COOLDOWN = 2  # seconds
 
 # Global locks and trackers
 detection_lock = threading.Lock()
@@ -21,8 +21,9 @@ def run_yolo_detection():
     global last_detection_time, last_student_name
 
     # 🕒 Prevent repeated detections too fast
-    if time.time() - last_detection_time < COOLDOWN:
-        print("🕒 Cooldown active, skipping duplicate detection...")
+    remaining_cooldown = COOLDOWN - (time.time() - last_detection_time)
+    if remaining_cooldown > 0:
+        print(f"🕒 Cooldown active ({remaining_cooldown:.1f}s left)... skipping duplicate detection.")
         return {
             "status": "cooldown",
             "student name": last_student_name,
@@ -56,7 +57,7 @@ def run_yolo_detection():
                 "error": str(e)
             }
 
-        # 🧹 Camera cleanup if module provides it (safeguard)
+        # 🧹 Cleanup
         try:
             import cv2
             cv2.destroyAllWindows()
@@ -81,6 +82,13 @@ def run_yolo_detection():
             # 🔒 Track last detection for next runs
             last_student_name = student_name
             last_detection_time = time.time()
+
+            # 🔔 Print when it's ready again
+            def cooldown_notifier():
+                time.sleep(COOLDOWN)
+                print("✅ Cooldown finished — ready for next detection request!")
+
+            threading.Thread(target=cooldown_notifier, daemon=True).start()
 
         print(f"🖐️ Final YOLO output → {result_data}")
         return result_data

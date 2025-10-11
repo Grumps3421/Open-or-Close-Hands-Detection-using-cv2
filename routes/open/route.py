@@ -1,5 +1,4 @@
-from urllib import request
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify , request
 from checking_answer import run_yolo_detection
 from register_students_MVC.model import BraceletModelRegister
 
