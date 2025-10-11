@@ -13,11 +13,11 @@ class BraceletModelRegister:
         self.fixed_questions = {
             "Makabansa": {
                 "Lesson 1: Philippine Flag": [
-                    {"question": "1. What color is on the top of the flag during peace?", "answer": "closed"},
-                    {"question": "2. What does the red color mean?", "answer": "closed"},
-                    {"question": "3. What shape is in the middle of the flag?", "answer": "open"},
-                    {"question": "4. What do the three stars stand for?", "answer": "open"},
-                    {"question": "5. What does the white triangle represent?", "answer": "open"}
+                    {"question": "1. What color is on the top of the flag during peace?", "answer": "Close"},
+                    {"question": "2. What does the red color mean?", "answer": "Close"},
+                    {"question": "3. What shape is in the middle of the flag?", "answer": "Open"},
+                    {"question": "4. What do the three stars stand for?", "answer": "Open"},
+                    {"question": "5. What does the white triangle represent?", "answer": "Open"}
                 ]
             }
         }

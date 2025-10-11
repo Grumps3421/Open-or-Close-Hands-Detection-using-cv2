@@ -1,113 +1,86 @@
 import time
+import threading
 from alphabotFunction.YoLo.my_model_final.yolo_detect import detect_student_and_hand
 
-# ✅ Model configuration
+# Constants
 MODEL_PATH = r"C:\THESIS\backend\Open-or-Close-Hands-Detection-using-cv2\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model"
 THRESHOLD = 0.7
+COOLDOWN = 3  # seconds
+
+# Global locks and trackers
+detection_lock = threading.Lock()
+last_detection_time = 0
+last_student_name = None
 
 
-# ===========================================================
-# FUNCTION USED BY /close ROUTE
-# ===========================================================
-def check_answer():
+def run_yolo_detection():
     """
-    Logic for /close route:
-    - 'Close' hand = correct
-    - 'Open' hand = wrong
+    Runs YOLO + MediaPipe detection once.
+    Prevents overlapping calls and filters random false detections.
     """
-    print("⌛ Waiting 2 seconds before detection...")
-    time.sleep(2)
+    global last_detection_time, last_student_name
 
-    # Run YOLO + MediaPipe detection
-    student_name, hand_status = detect_student_and_hand(MODEL_PATH, THRESHOLD)
+    # 🕒 Prevent repeated detections too fast
+    if time.time() - last_detection_time < COOLDOWN:
+        print("🕒 Cooldown active, skipping duplicate detection...")
+        return {
+            "status": "cooldown",
+            "student name": last_student_name,
+            "bracelet_id": last_student_name,
+            "hand_status": None
+        }
 
-    # Default JSON
-    result_data = {
-        "detect": "none",
-        "student name": None,
-        "bracelet_id": None,
-        "hand_status": None,
-    }
+    # 🧠 Check if another detection is already running
+    if detection_lock.locked():
+        print("⚠️ Detection already running, skipping new request.")
+        return {
+            "status": "busy",
+            "student name": None,
+            "bracelet_id": None,
+            "hand_status": None
+        }
 
-    # If detection failed
-    if not student_name or not hand_status:
-        print("❌ No detection found.")
+    with detection_lock:
+        print("🎥 Starting YOLO detection safely...")
+        time.sleep(1)  # optional delay
+
+        try:
+            student_name, hand_status = detect_student_and_hand(MODEL_PATH, THRESHOLD)
+        except Exception as e:
+            print(f"❌ Error during YOLO detection: {e}")
+            return {
+                "status": "error",
+                "student name": None,
+                "bracelet_id": None,
+                "hand_status": None,
+                "error": str(e)
+            }
+
+        # 🧹 Camera cleanup if module provides it (safeguard)
+        try:
+            import cv2
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
+
+        # 📊 Prepare result
+        result_data = {
+            "student name": student_name,
+            "bracelet_id": student_name,
+            "hand_status": hand_status
+        }
+
+        if not student_name or not hand_status:
+            print("⚠️ No detection found.")
+            result_data["status"] = "failed"
+        else:
+            # ✅ Valid detection
+            print(f"✅ Detected: {student_name} | Hand: {hand_status}")
+            result_data["status"] = "success"
+
+            # 🔒 Track last detection for next runs
+            last_student_name = student_name
+            last_detection_time = time.time()
+
+        print(f"🖐️ Final YOLO output → {result_data}")
         return result_data
-
-    # ✅ Normal logic (for close)
-    if hand_status.lower() == "close":
-        result = "correct"
-    elif hand_status.lower() == "open":
-        result = "wrong"
-    else:
-        result = "none"
-
-    result_data = {
-        "detect": result,
-        "student name": student_name,
-        "bracelet_id": student_name,  # same as name if not mapped yet
-        "hand_status": hand_status,
-    }
-
-    print(f"✅ [CLOSE] Detected: {student_name} | Hand: {hand_status} → {result}")
-    return result_data
-
-
-# ===========================================================
-# FUNCTION USED BY /open ROUTE
-# ===========================================================
-def check_answer_result():
-    """
-    Logic for /open route:
-    - 'Open' hand = correct
-    - 'Close' hand = wrong
-    """
-    print("⌛ Waiting 2 seconds before detection...")
-    time.sleep(2)
-
-    # Run YOLO + MediaPipe detection
-    student_name, hand_status = detect_student_and_hand(MODEL_PATH, THRESHOLD)
-
-    # Default JSON
-    result_data = {
-        "detect": "none",
-        "student name": None,
-        "bracelet_id": None,
-        "hand_status": None,
-    }
-
-    # If detection failed
-    if not student_name or not hand_status:
-        print("❌ No detection found.")
-        return result_data
-
-    # ✅ Reversed logic (for open)
-    if hand_status.lower() == "open":
-        result = "correct"
-    elif hand_status.lower() == "close":
-        result = "wrong"
-    else:
-        result = "none"
-
-    result_data = {
-        "detect": result,
-        "student name": student_name,
-        "bracelet_id": student_name,
-        "hand_status": hand_status,
-    }
-
-    print(f"✅ [OPEN] Detected: {student_name} | Hand: {hand_status} → {result}")
-    return result_data
-
-
-# ===========================================================
-# OPTIONAL TESTING
-# ===========================================================
-if __name__ == "_main_":
-    print("Testing both functions...\n")
-
-    close_result = check_answer()
-    print("\nFinal result of check_answer (/close):", close_result)
-
-    open_result = check_answer_result()
-    print("\nFinal result of check_answer_result (/open):", open_result)
