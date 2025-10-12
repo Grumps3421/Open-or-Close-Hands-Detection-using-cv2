@@ -1,7 +1,6 @@
 from pymongo import MongoClient
 from datetime import datetime
 
-
 class BraceletModelRegister:
     def __init__(self, db_url="mongodb://localhost:27017/", db_name="alphabot_db"):
         self.client = MongoClient(db_url)
@@ -42,21 +41,26 @@ class BraceletModelRegister:
         return [doc["bracelet_id"] for doc in self.main_collection.find({}, {"bracelet_id": 1, "_id": 0})]
 
     # -----------------------------------------------------
-    # ✅ Register student (creates a separate DB collection)
+    # ✅ Register student (creates or resets student DB)
     # -----------------------------------------------------
     def register_student(self, student_name, bracelet_id):
-        if self.is_bracelet_taken(bracelet_id):
-            return False, f"{bracelet_id} is already registered"
+        """Registers a student and ensures their personal collection exists."""
+        if not student_name or not bracelet_id:
+            return False, "❌ Missing student name or bracelet ID."
 
-        # Insert to main registration list
-        self.main_collection.insert_one({
-            "studentname": student_name,
-            "bracelet_id": bracelet_id,
-            "date_registered": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
+        # Insert to main registration list if not already registered
+        if not self.is_bracelet_taken(bracelet_id):
+            self.main_collection.insert_one({
+                "studentname": student_name,
+                "bracelet_id": bracelet_id,
+                "date_registered": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
 
-        # Create personal DB collection for student (e.g. "Student1_db")
+        # Create or reset student DB collection
         student_collection = self.db[f"{student_name}_db"]
+
+        # Remove old data (if retaking)
+        student_collection.delete_many({})
 
         # Prepare default question set
         questions = []
@@ -70,24 +74,23 @@ class BraceletModelRegister:
                         "score": 0
                     })
 
-        # Insert student document
+        # Insert fresh quiz record
         student_collection.insert_one({
             "student_name": student_name,
             "bracelet_id": bracelet_id,
             "questions": questions,
             "total_score": 0,
-            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "attempt_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
 
-        return True, f"✅ Registered {student_name} and created {student_name}_db"
+        return True, f"✅ Registered {student_name} (reset quiz if retake)."
 
     # -----------------------------------------------------
-    # ✅ Update score when YOLO result comes in
+    # ✅ Update score per answer and auto-update total
     # -----------------------------------------------------
     def update_student_score(self, result_data):
         student_name = result_data.get("student name")
-        hand_status = result_data.get("hand_status", "").lower()
-        detect_result = result_data.get("detect")  # "correct" or "wrong"
+        hand_status = result_data.get("hand_status", "").capitalize()
 
         if not student_name:
             return "❌ No student detected."
@@ -102,29 +105,29 @@ class BraceletModelRegister:
         for q in student_doc["questions"]:
             if q["student_answer"] is None:
                 q["student_answer"] = hand_status
-                q["score"] = 1 if detect_result == "correct" else 0
+                q["score"] = 1 if q["student_answer"] == q["correct_answer"] else 0
                 break
 
         # Recalculate total score
         total_score = sum(q["score"] for q in student_doc["questions"])
 
-        # Update in MongoDB
+        # Update DB immediately after each answer
         student_collection.update_one(
             {"student_name": student_name},
             {
                 "$set": {
                     "questions": student_doc["questions"],
                     "total_score": total_score,
-                    "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    "attempt_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
             }
         )
 
-        # If finished answering all
+        # Check if finished all questions
         if all(q["student_answer"] is not None for q in student_doc["questions"]):
-            return f"🏁 {student_name} finished quiz! Total score: {total_score}/5"
+            return f"🏁 {student_name} finished quiz! Final score: {total_score}/5 (updated record)"
         else:
-            return f"✅ Recorded {detect_result} for {student_name}. Current score: {total_score}"
+            return f"✅ Updated answer for {student_name}. Current score: {total_score}"
 
     # -----------------------------------------------------
     # ✅ Utility: show registered students
@@ -138,15 +141,17 @@ class BraceletModelRegister:
     def delete_student(self, bracelet_id):
         result = self.main_collection.delete_one({"bracelet_id": bracelet_id})
         if result.deleted_count > 0:
-            # Drop student's collection too
-            student_name = bracelet_id  # same naming
-            self.db.drop_collection(f"{student_name}_db")
+            # Drop student's personal DB
+            for name in self.db.list_collection_names():
+                if name.endswith("_db"):
+                    self.db.drop_collection(name)
             return True
         return False
 
     def delete_all_students(self):
         self.main_collection.delete_many({})
         # Drop all per-student collections
-        for student in self.bracelet_colors.keys():
-            self.db.drop_collection(f"{student}_db")
+        for name in self.db.list_collection_names():
+            if name.endswith("_db"):
+                self.db.drop_collection(name)
         return True

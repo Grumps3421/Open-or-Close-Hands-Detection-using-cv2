@@ -3,7 +3,7 @@ import threading
 from alphabotFunction.YoLo.my_model_final.yolo_detect import detect_student_and_hand
 
 # Constants
-MODEL_PATH = r"C:\THESIS\backend\Open-or-Close-Hands-Detection-using-cv2\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model"
+MODEL_PATH = r"C:\Users\Jomar\Desktop\andito mga code ko\Open-or-Close-Hands-Detection-using-cv2\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model"
 THRESHOLD = 0.7
 COOLDOWN = 2  # seconds
 

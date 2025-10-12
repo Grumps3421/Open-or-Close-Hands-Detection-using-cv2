@@ -7,6 +7,9 @@ from pymongo import MongoClient
 
 # Suppress TensorFlow logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+# Disable all GUI usage for OpenCV (no cv2.imshow window)
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
 
 # ============================================================
 # 🔧 Load bracelet mappings from MongoDB
@@ -32,7 +35,7 @@ def load_class_name_map():
 
 
 # ============================================================
-# 🧠 Detection Function — runs YOLO + MediaPipe
+# 🧠 Detection Function — runs YOLO + MediaPipe (Headless)
 # ============================================================
 def detect_student_and_hand(model_path, threshold=0.7):
     """
@@ -53,13 +56,13 @@ def detect_student_and_hand(model_path, threshold=0.7):
     registered_bracelets = set(class_name_map.keys())
 
     mp_hands = mp.solutions.hands
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Use DirectShow for Windows stability
 
     if not cap.isOpened():
         print("❌ Cannot open camera.")
         return None, None
 
-    print("🎥 Starting detection...")
+    print("🎥 Starting detection (headless mode)...")
     student_detected = None
     hand_status = None
     start_time = time.time()
@@ -119,12 +122,6 @@ def detect_student_and_hand(model_path, threshold=0.7):
                 bracelet_id = detected_classes[0]
                 student_detected = class_name_map.get(bracelet_id)
 
-            # Show the live video feed (optional, press 'q' to exit early)
-            cv2.imshow("Detection", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                print("🛑 Detection manually stopped.")
-                break
-
             # Stop when both student and hand status detected
             if student_detected and hand_status:
                 print(f"✅ Detected: {student_detected} | Hand: {hand_status}")
@@ -137,7 +134,12 @@ def detect_student_and_hand(model_path, threshold=0.7):
 
     # Release resources
     cap.release()
-    cv2.destroyAllWindows()
+
+    # Ensure no OpenCV window tries to persist
+    try:
+        cv2.destroyAllWindows()
+    except:
+        pass
 
     return student_detected, hand_status
 
