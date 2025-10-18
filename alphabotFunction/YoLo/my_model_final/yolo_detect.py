@@ -5,12 +5,6 @@ import time
 from ultralytics import YOLO
 from pymongo import MongoClient
 
-# Suppress TensorFlow logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-# Disable all GUI usage for OpenCV (no cv2.imshow window)
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
-
-
 # ============================================================
 # 🔧 Load bracelet mappings from MongoDB
 # ============================================================
@@ -71,7 +65,7 @@ def detect_student_and_hand(model_path, threshold=0.7):
     with mp_hands.Hands(
         min_detection_confidence=0.7,
         min_tracking_confidence=0.7,
-        max_num_hands=6
+        max_num_hands=1
     ) as hands:
         while True:
             ret, frame = cap.read()
