@@ -7,8 +7,7 @@ class BraceletModelRegister:
         self.db = self.client[db_name]
         self.main_collection = self.db["bracelet_registrations"]
 
-        # Fixed data
-        self.fixed_subjects = ["Makabansa"]
+        # ✅ Fixed subjects and question sets
         self.fixed_questions = {
             "Makabansa": {
                 "Lesson 1: Philippine Flag": [
@@ -17,6 +16,34 @@ class BraceletModelRegister:
                     {"question": "3. What shape is in the middle of the flag?", "answer": "Open"},
                     {"question": "4. What do the three stars stand for?", "answer": "Open"},
                     {"question": "5. What does the white triangle represent?", "answer": "Open"}
+                ]
+            },
+            "GMRC": {
+                "Lesson 1: Good Manners": [
+                    {"question": "1. Which one is the mother?", "answer": "Open"},
+                    {"question": "2. Which one is the father?", "answer": "Close"},
+                    {"question": "3. Which one is the child?", "answer": "Open"},
+                    {"question": "4. Which picture shows a family?", "answer": "Close"},
+                    {"question": "5. Which one is a sibling?", "answer": "Open"}
+                ],
+                "Lesson 2: Respecting Elders": [
+                    {"question": "1. Is saying thank you to your parents respectful?", "answer": "Open"},
+                    {"question": "2. Is keeping yourself clean and brushing your teeth a way of respecting yourself?", "answer": "Open"},
+                    {"question": "3. Is shouting at your family members a respectful attitude?", "answer": "Close"},
+                    {"question": "4. Is Helping your parents with simple chorse a respectful act?", "answer": "Open"},
+                    {"question": "5. Is calling your brother or sister bad names respectful?", "answer": "Open"}
+                ]
+            },
+            "Science": {
+                "Lesson 1: Animals": [
+                    {"question": "1. Do birds have wings?", "answer": "Open"},
+                    {"question": "2. Do fish live on land?", "answer": "Close"}
+                ]
+            },
+            "Math": {
+                "Lesson 1: Numbers": [
+                    {"question": "1. Is 2 + 2 = 4?", "answer": "Open"},
+                    {"question": "2. Is 5 greater than 10?", "answer": "Close"}
                 ]
             }
         }
@@ -41,14 +68,13 @@ class BraceletModelRegister:
         return [doc["bracelet_id"] for doc in self.main_collection.find({}, {"bracelet_id": 1, "_id": 0})]
 
     # -----------------------------------------------------
-    # ✅ Register student (creates or resets student DB)
+    # ✅ Register student
     # -----------------------------------------------------
     def register_student(self, student_name, bracelet_id):
-        """Registers a student and ensures their personal collection exists."""
+        """Registers a student and creates/reset their question sets."""
         if not student_name or not bracelet_id:
             return False, "❌ Missing student name or bracelet ID."
 
-        # Insert to main registration list if not already registered
         if not self.is_bracelet_taken(bracelet_id):
             self.main_collection.insert_one({
                 "studentname": student_name,
@@ -56,25 +82,22 @@ class BraceletModelRegister:
                 "date_registered": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
 
-        # Create or reset student DB collection
         student_collection = self.db[f"{student_name}_db"]
+        student_collection.delete_many({})  # Reset if retaking
 
-        # Remove old data (if retaking)
-        student_collection.delete_many({})
-
-        # Prepare default question set
         questions = []
         for subject, lessons in self.fixed_questions.items():
             for lesson_title, qlist in lessons.items():
                 for q in qlist:
                     questions.append({
+                        "subject": subject,
+                        "lesson": lesson_title,
                         "question": q["question"],
                         "correct_answer": q["answer"],
                         "student_answer": None,
                         "score": 0
                     })
 
-        # Insert fresh quiz record
         student_collection.insert_one({
             "student_name": student_name,
             "bracelet_id": bracelet_id,
@@ -86,14 +109,17 @@ class BraceletModelRegister:
         return True, f"✅ Registered {student_name} (reset quiz if retake)."
 
     # -----------------------------------------------------
-    # ✅ Update score per answer and auto-update total
+    # ✅ Update score per answer & per subject
     # -----------------------------------------------------
     def update_student_score(self, result_data):
         student_name = result_data.get("student name")
         hand_status = result_data.get("hand_status", "").capitalize()
+        subject = result_data.get("subject", "").strip()
 
         if not student_name:
             return "❌ No student detected."
+        if not subject:
+            return "❌ No subject provided."
 
         student_collection = self.db[f"{student_name}_db"]
         student_doc = student_collection.find_one({"student_name": student_name})
@@ -101,17 +127,15 @@ class BraceletModelRegister:
         if not student_doc:
             return f"❌ No record found for {student_name}."
 
-        # Find next unanswered question
+        # Only update unanswered question from the same subject
         for q in student_doc["questions"]:
-            if q["student_answer"] is None:
+            if q["subject"].lower() == subject.lower() and q["student_answer"] is None:
                 q["student_answer"] = hand_status
                 q["score"] = 1 if q["student_answer"] == q["correct_answer"] else 0
                 break
 
-        # Recalculate total score
         total_score = sum(q["score"] for q in student_doc["questions"])
 
-        # Update DB immediately after each answer
         student_collection.update_one(
             {"student_name": student_name},
             {
@@ -123,25 +147,27 @@ class BraceletModelRegister:
             }
         )
 
-        # Check if finished all questions
-        if all(q["student_answer"] is not None for q in student_doc["questions"]):
-            return f"🏁 {student_name} finished quiz! Final score: {total_score}/5 (updated record)"
+        # Check if finished that subject only
+        subject_done = all(
+            q["student_answer"] is not None
+            for q in student_doc["questions"]
+            if q["subject"].lower() == subject.lower()
+        )
+
+        if subject_done:
+            return f"🏁 {student_name} finished {subject}! Current total: {total_score}"
         else:
-            return f"✅ Updated answer for {student_name}. Current score: {total_score}"
+            return f"✅ Updated answer for {student_name} ({subject}). Score: {total_score}"
 
     # -----------------------------------------------------
-    # ✅ Utility: show registered students
+    # ✅ Utilities
     # -----------------------------------------------------
     def get_registered_students(self):
         return list(self.main_collection.find({}, {"studentname": 1, "bracelet_id": 1, "_id": 0}))
 
-    # -----------------------------------------------------
-    # ✅ Delete single or all students
-    # -----------------------------------------------------
     def delete_student(self, bracelet_id):
         result = self.main_collection.delete_one({"bracelet_id": bracelet_id})
         if result.deleted_count > 0:
-            # Drop student's personal DB
             for name in self.db.list_collection_names():
                 if name.endswith("_db"):
                     self.db.drop_collection(name)
@@ -150,7 +176,6 @@ class BraceletModelRegister:
 
     def delete_all_students(self):
         self.main_collection.delete_many({})
-        # Drop all per-student collections
         for name in self.db.list_collection_names():
             if name.endswith("_db"):
                 self.db.drop_collection(name)

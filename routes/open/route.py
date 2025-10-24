@@ -1,14 +1,17 @@
-from flask import Blueprint, jsonify , request
+from flask import Blueprint, jsonify, request
 from checking_answer import run_yolo_detection
 from register_students_MVC.model import BraceletModelRegister
 
+# Blueprint setup
 open_bp = Blueprint("open_bp", __name__)
 bracelet_model = BraceletModelRegister()
 
 
 @open_bp.route("/open", methods=["POST"])
 def detect_open():
-      # ✅ Get JSON data from frontend
+    """Handles hand-open detection and updates student score."""
+
+    # ✅ Get JSON data from frontend
     data = request.get_json(force=True)
     choice = data.get("choice", "").lower() if data else ""
 
@@ -23,7 +26,7 @@ def detect_open():
         }), 200
 
     # -------------------------------
-    # 🎥 Start YOLO detection
+    # 🎥 Run YOLO detection
     # -------------------------------
     print("🎥 Running YOLO detection for /open ...")
     result = run_yolo_detection()
@@ -40,15 +43,22 @@ def detect_open():
         }), 400
 
     # -------------------------------
-    # ✅ Record student score
+    # ✅ Record student score & subject
     # -------------------------------
+    subject = data.get("subject", "").strip()
+    result["subject"] = subject  # attach subject
     update_message = bracelet_model.update_student_score(result)
+
     print(f"📊 Update message: {update_message}")
 
+    # -------------------------------
+    # 🧾 Send response back to frontend
+    # -------------------------------
     return jsonify({
         "status": "success",
         "student": result.get("student name"),
         "bracelet_id": result.get("bracelet_id"),
         "hand_status": result.get("hand_status"),
+        "subject": subject,
         "update_message": update_message
     }), 200
