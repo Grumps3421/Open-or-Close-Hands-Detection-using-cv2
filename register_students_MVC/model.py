@@ -9,7 +9,7 @@ class BraceletModelRegister:
 
         # ✅ Fixed subjects and question sets
         self.fixed_questions = {
-            "Makabansa": {
+            "makabansa": {
                 "Lesson 1: Philippine Flag": [
                     {"question": "1. What color is on the top of the flag during peace?", "answer": "Close"},
                     {"question": "2. What does the red color mean?", "answer": "Close"},
@@ -18,7 +18,7 @@ class BraceletModelRegister:
                     {"question": "5. What does the white triangle represent?", "answer": "Open"}
                 ]
             },
-            "GMRC": {
+            "gmrc": {
                 "Lesson 1: Good Manners": [
                     {"question": "1. Which one is the mother?", "answer": "Open"},
                     {"question": "2. Which one is the father?", "answer": "Close"},
@@ -34,13 +34,13 @@ class BraceletModelRegister:
                     {"question": "5. Is calling your brother or sister bad names respectful?", "answer": "Open"}
                 ]
             },
-            "Science": {
+            "science": {
                 "Lesson 1: Animals": [
                     {"question": "1. Do birds have wings?", "answer": "Open"},
                     {"question": "2. Do fish live on land?", "answer": "Close"}
                 ]
             },
-            "Math": {
+            "math": {
                 "Lesson 1: Numbers": [
                     {"question": "1. Is 2 + 2 = 4?", "answer": "Open"},
                     {"question": "2. Is 5 greater than 10?", "answer": "Close"}
