@@ -21,7 +21,7 @@ class_name_map = {
 }
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', default='C:\Thesis\backend\Open-or-Close-Hands-Detection-using-cv2\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model')
+parser.add_argument('--model', default='C:\\Thesis\backend\\Open-or-Close-Hands-Detection-using-cv2\\alphabotFunction\\YoLo\my_model_final\\bracelet_identification_ncnn_model')
 parser.add_argument('--thresh', type=float, default=0.7)
 args = parser.parse_args()
 

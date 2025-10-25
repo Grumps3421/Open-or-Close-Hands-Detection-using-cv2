@@ -143,9 +143,10 @@ def detect_student_and_hand(model_path, threshold=0.7):
 # ============================================================
 if __name__ == "__main__":
     MODEL_PATH = (
-        r"C:\Thesis\backend\Open-or-Close-Hands-Detection-using-cv2"
+        r"C:\Users\Jomar\Desktop\andito mga code ko\Open-or-Close-Hands-Detection-using-cv2"
         r"\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model"
     )
+
 
     student, hand = detect_student_and_hand(MODEL_PATH)
     print(f"\n📋 Final Detection Result → Student: {student} | Hand: {hand}")

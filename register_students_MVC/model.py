@@ -32,20 +32,64 @@ class BraceletModelRegister:
                     {"question": "3. Is shouting at your family members a respectful attitude?", "answer": "Close"},
                     {"question": "4. Is Helping your parents with simple chorse a respectful act?", "answer": "Open"},
                     {"question": "5. Is calling your brother or sister bad names respectful?", "answer": "Open"}
+                ],
+                "Lesson 3: I have Rights Too!":[
+                    {"question": "1. Do children have the right to play?", "answer": "Close"},
+                    {"question": "2. Do children have the right to go to school and learn?", "answer": "Open"},
+                    {"question": "3. Is it okay for children to be hurt or bullied?", "answer": "Close"},
+                    {"question": "4. Should children be given food, love, and care?", "answer": "Open"},
+                    {"question": "5. Is it wrong for children to say how they feel?", "answer": "Close"}
+                ]
+            },
+            "language": {
+                "Lesson 1: Me, My Family, and My Home": [
+                    {"question": "1. Which one is a mother?", "answer": "Open"},
+                    {"question": "2. Which one is a chair?", "answer": "Close"},
+                    {"question": "3. Which one is a car?", "answer": "Open"},
+                    {"question": "4. Which one is a pencil?", "answer": "Open"},
+                    {"question": "5. Which one is a plate?", "answer": "Close"}
+                ],
+                "Lesson 2: Lower Case": [
+                    {"question": "1. Which one is the lowercase of letter A?", "answer": "Open"},
+                    {"question": "2. Which one is the lowercase of letter B?", "answer": "Close"},
+                    {"question": "3. Which one is the lowercase of letter R?", "answer": "Close"},
+                    {"question": "4. Which one is the lowercase of letter Q?", "answer": "Open"},
+                    {"question": "5. Which one is the lowercase of letter H?", "answer": "Close"}
+                ],
+                "Lesson 2: Upper Case": [
+                    {"question": "1. Which one is the uppercase of letter e?", "answer": "Open"},
+                    {"question": "2. Which one is the uppercase of letter i?", "answer": "Open"},
+                    {"question": "3. Which one is the uppercase of letter n?", "answer": "Close"},
+                    {"question": "4. Which one is the uppercase of letter l?", "answer": "Close"},
+                    {"question": "5. Which one is the uppercase of letter z?", "answer": "Close"}
+                ]
+            },
+            "mathematics": {
+                "Lesson 1: Count and Match": [
+                    {"question": "1. Count the blocks?", "answer": "Close"},
+                    {"question": "2. Count the apples?", "answer": "Open"},
+                    {"question": "3. Count the toy cars?", "answer": "Close"},
+                    {"question": "4. Count the stars?", "answer": "Open"},
+                    {"question": "5. Count the pencils?", "answer": "Open"}
                 ]
             },
             "science": {
-                "Lesson 1: Animals": [
-                    {"question": "1. Do birds have wings?", "answer": "Open"},
-                    {"question": "2. Do fish live on land?", "answer": "Close"}
+                "Lesson 1: What Can Our Body Do?": [
+                    {"question": "1. What do we use to see?", "answer": "Open"},
+                    {"question": "2. What do we use to walk?", "answer": "Close"},
+                    {"question": "3. What do we use to hear?", "answer": "Open"},
+                    {"question": "4. What do we use to eat?", "answer": "Open"},
+                    {"question": "5. What do we use to pick things up?", "answer": "Open"}
+                ],
+                "Lesson 3: Let's Look touch, and Tell!": [
+                    {"question": "1. Which one is the square?", "answer": "Open"},
+                    {"question": "2. Which one is the circle?", "answer": "Close"},
+                    {"question": "3. Which one is the rectangle?", "answer": "Open"},
+                    {"question": "4. Which one is the star?", "answer": "Close"},
+                    {"question": "5. Which one is the oblong?", "answer": "Open"}
                 ]
             },
-            "math": {
-                "Lesson 1: Numbers": [
-                    {"question": "1. Is 2 + 2 = 4?", "answer": "Open"},
-                    {"question": "2. Is 5 greater than 10?", "answer": "Close"}
-                ]
-            }
+            
         }
 
         self.bracelet_colors = {

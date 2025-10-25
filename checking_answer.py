@@ -1,10 +1,13 @@
 import time
 import threading
 from alphabotFunction.YoLo.my_model_final.yolo_detect import detect_student_and_hand
+import os
 
 # Constants
-MODEL_PATH = r"C:\Thesis\backend\Open-or-Close-Hands-Detection-using-cv2\alphabotFunction\YoLo\my_model_final\bracelet_identification_ncnn_model"
-THRESHOLD = 0.7
+# Dynamically locate model relative to this file
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "alphabotFunction", "YoLo", "my_model_final", "bracelet_identification_ncnn_model")
+THRESHOLD = 0.85
 COOLDOWN = 2  # seconds
 
 # Global locks and trackers
