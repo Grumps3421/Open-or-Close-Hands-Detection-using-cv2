@@ -30,7 +30,7 @@ def load_class_name_map():
 
 
 # ============================================================
-# 🖐️ YOLO + MediaPipe (Open Hand Detection Only)
+# 🖐️ YOLO + MediaPipe (Open Hand Detection)
 # ============================================================
 def detect_student_open_hand(model_path, threshold=0.7, timeout=20):
     if not os.path.exists(model_path):
@@ -55,6 +55,7 @@ def detect_student_open_hand(model_path, threshold=0.7, timeout=20):
     start_time = time.time()
     student_detected = None
     hand_status = None
+    open_frames = 0  # count how many consecutive frames show open hand
 
     with mp_hands.Hands(
         min_detection_confidence=0.7,
@@ -71,20 +72,28 @@ def detect_student_open_hand(model_path, threshold=0.7, timeout=20):
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hand_res = hands.process(rgb)
 
+            hand_status = "not_open"
+
             if hand_res.multi_hand_landmarks:
                 for hlm in hand_res.multi_hand_landmarks:
                     lm = hlm.landmark
                     tip_ids = [8, 12, 16, 20]
                     fingers = [1 if lm[tip].y < lm[tip - 2].y else 0 for tip in tip_ids]
 
+                    # ✅ Strict OPEN condition: at least 3 fingers up
                     if sum(fingers) >= 3:
                         hand_status = "open"
+                        open_frames += 1
+                    else:
+                        open_frames = 0
+            else:
+                open_frames = 0
 
             # YOLO detection
             results = model(frame, verbose=False)
             detections = results[0].boxes
-
             detected_classes = []
+
             for det in detections:
                 conf = det.conf.item()
                 if conf < threshold:
@@ -93,31 +102,32 @@ def detect_student_open_hand(model_path, threshold=0.7, timeout=20):
                 if cls_name in registered_bracelets:
                     detected_classes.append(cls_name)
 
-            if detected_classes and hand_status == "open":
+            # ✅ Confirm only if stable for 5 frames
+            if detected_classes and hand_status == "open" and open_frames >= 5:
                 bracelet_id = detected_classes[0]
                 student_detected = class_name_map.get(bracelet_id)
-                print(f"✅ Detected: {student_detected} | Hand: OPEN")
+                print(f"✅ Detected: {student_detected} | Hand: OPEN (stable)")
                 break
 
             if time.time() - start_time > timeout:
-                print("⏰ Timeout: No OPEN hand detected.")
+                print("⏰ Timeout: No stable OPEN hand detected.")
                 break
 
     cap.release()
     cv2.destroyAllWindows()
 
-    if not student_detected and not hand_status:
+    if not student_detected and hand_status != "open":
         return "No bracelet detected", "No hand detected"
     elif not student_detected:
         return "No bracelet detected", hand_status or "No hand detected"
-    elif not hand_status:
+    elif hand_status != "open":
         return student_detected, "No hand detected"
 
     return student_detected, hand_status
 
 
 # ============================================================
-# ✊ YOLO + MediaPipe (Closed Hand Detection Only)
+# ✊ YOLO + MediaPipe (Close Hand Detection)
 # ============================================================
 def detect_student_close_hand(model_path, threshold=0.7, timeout=20):
     if not os.path.exists(model_path):
@@ -142,6 +152,7 @@ def detect_student_close_hand(model_path, threshold=0.7, timeout=20):
     start_time = time.time()
     student_detected = None
     hand_status = None
+    close_frames = 0  # count consecutive closed hand frames
 
     with mp_hands.Hands(
         min_detection_confidence=0.7,
@@ -158,20 +169,28 @@ def detect_student_close_hand(model_path, threshold=0.7, timeout=20):
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hand_res = hands.process(rgb)
 
+            hand_status = "not_close"
+
             if hand_res.multi_hand_landmarks:
                 for hlm in hand_res.multi_hand_landmarks:
                     lm = hlm.landmark
                     tip_ids = [8, 12, 16, 20]
                     fingers = [1 if lm[tip].y < lm[tip - 2].y else 0 for tip in tip_ids]
 
-                    if sum(fingers) < 3:
+                    # ✅ Strict CLOSE condition: all fingers down
+                    if sum(fingers) == 0:
                         hand_status = "close"
+                        close_frames += 1
+                    else:
+                        close_frames = 0
+            else:
+                close_frames = 0
 
             # YOLO detection
             results = model(frame, verbose=False)
             detections = results[0].boxes
-
             detected_classes = []
+
             for det in detections:
                 conf = det.conf.item()
                 if conf < threshold:
@@ -180,24 +199,25 @@ def detect_student_close_hand(model_path, threshold=0.7, timeout=20):
                 if cls_name in registered_bracelets:
                     detected_classes.append(cls_name)
 
-            if detected_classes and hand_status == "close":
+            # ✅ Confirm only if stable for 5 frames
+            if detected_classes and hand_status == "close" and close_frames >= 5:
                 bracelet_id = detected_classes[0]
                 student_detected = class_name_map.get(bracelet_id)
-                print(f"✅ Detected: {student_detected} | Hand: CLOSE")
+                print(f"✅ Detected: {student_detected} | Hand: CLOSE (stable)")
                 break
 
             if time.time() - start_time > timeout:
-                print("⏰ Timeout: No CLOSED hand detected.")
+                print("⏰ Timeout: No stable CLOSED hand detected.")
                 break
 
     cap.release()
     cv2.destroyAllWindows()
 
-    if not student_detected and not hand_status:
+    if not student_detected and hand_status != "close":
         return "No bracelet detected", "No hand detected"
     elif not student_detected:
         return "No bracelet detected", hand_status or "No hand detected"
-    elif not hand_status:
+    elif hand_status != "close":
         return student_detected, "No hand detected"
 
     return student_detected, hand_status
