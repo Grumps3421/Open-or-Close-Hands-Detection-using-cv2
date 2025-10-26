@@ -153,33 +153,72 @@ class BraceletModelRegister:
         return True, f"✅ Registered {student_name} (reset quiz if retake)."
 
     # -----------------------------------------------------
-    # ✅ Update score per answer & per subject
+    # ✅ FIXED: Update score per answer & per subject
     # -----------------------------------------------------
     def update_student_score(self, result_data):
-        student_name = result_data.get("student name")
+        """Update student score - uses bracelet_id from result_data"""
+        # ✅ FIX: Use the bracelet_id field directly (already provided by YOLO)
+        bracelet_id = result_data.get("bracelet_id", "").strip()
+        student_name = result_data.get("student name", "").strip()
         hand_status = result_data.get("hand_status", "").capitalize()
         subject = result_data.get("subject", "").strip()
 
+        print(f"\n🔍 DEBUG - Received data:")
+        print(f"   Student Name: {student_name}")
+        print(f"   Bracelet ID: {bracelet_id}")
+        print(f"   Hand Status: {hand_status}")
+        print(f"   Subject: {subject}")
+
         if not student_name:
             return "❌ No student detected."
+        if not bracelet_id:
+            return "❌ No bracelet ID found."
         if not subject:
             return "❌ No subject provided."
 
+        # ✅ Verify the student is registered with this bracelet
+        registration = self.main_collection.find_one({"bracelet_id": bracelet_id})
+        
+        if not registration:
+            print(f"❌ Bracelet '{bracelet_id}' not found in bracelet_registrations")
+            return f"❌ Bracelet {bracelet_id} is not registered."
+        
+        registered_student_name = registration["studentname"]
+        
+        # ✅ Verify the detected student matches the registered bracelet
+        if student_name.lower() != registered_student_name.lower():
+            print(f"⚠️ WARNING: Detected '{student_name}' but bracelet {bracelet_id} is registered to '{registered_student_name}'")
+            return f"❌ Mismatch: Detected {student_name} but bracelet belongs to {registered_student_name}"
+        
+        print(f"✅ Verified: {student_name} with bracelet {bracelet_id}")
+
+        # Now use the student name to access their collection
         student_collection = self.db[f"{student_name}_db"]
         student_doc = student_collection.find_one({"student_name": student_name})
 
         if not student_doc:
+            print(f"❌ Collection {student_name}_db not found or empty")
             return f"❌ No record found for {student_name}."
 
-        # Only update unanswered question from the same subject
-        for q in student_doc["questions"]:
+        # Only update the first unanswered question from the same subject
+        question_found = False
+        for i, q in enumerate(student_doc["questions"]):
             if q["subject"].lower() == subject.lower() and q["student_answer"] is None:
                 q["student_answer"] = hand_status
                 q["score"] = 1 if q["student_answer"] == q["correct_answer"] else 0
+                print(f"📝 Updated Q{i+1}: {q['question'][:50]}...")
+                print(f"   Correct: {q['correct_answer']} | Student: {q['student_answer']} | Score: {q['score']}")
+                question_found = True
                 break
 
+        if not question_found:
+            print(f"⚠️ No unanswered questions found for subject: {subject}")
+            return f"⚠️ All questions answered for {subject} or no questions found"
+
+        # Calculate total score
         total_score = sum(q["score"] for q in student_doc["questions"])
 
+        # Update the database
         student_collection.update_one(
             {"student_name": student_name},
             {
@@ -191,17 +230,19 @@ class BraceletModelRegister:
             }
         )
 
+        print(f"💾 Database updated - Total Score: {total_score}")
+
         # Check if finished that subject only
-        subject_done = all(
-            q["student_answer"] is not None
-            for q in student_doc["questions"]
-            if q["subject"].lower() == subject.lower()
-        )
+        subject_questions = [q for q in student_doc["questions"] if q["subject"].lower() == subject.lower()]
+        answered_count = sum(1 for q in subject_questions if q["student_answer"] is not None)
+        total_count = len(subject_questions)
+        
+        subject_done = answered_count == total_count
 
         if subject_done:
-            return f"🏁 {student_name} finished {subject}! Current total: {total_score}"
+            return f"🏁 {student_name} finished {subject}! ({answered_count}/{total_count}) Total score: {total_score}"
         else:
-            return f"✅ Updated answer for {student_name} ({subject}). Score: {total_score}"
+            return f"✅ Updated answer for {student_name} ({subject}) - Progress: {answered_count}/{total_count} | Total score: {total_score}"
 
     # -----------------------------------------------------
     # ✅ Utilities
@@ -224,3 +265,43 @@ class BraceletModelRegister:
             if name.endswith("_db"):
                 self.db.drop_collection(name)
         return True
+    
+    # -----------------------------------------------------
+    # ✅ DEBUGGING HELPER
+    # -----------------------------------------------------
+    def debug_show_all_students(self):
+        """Show all registered students with their bracelet IDs"""
+        print("\n" + "="*60)
+        print("📊 REGISTERED STUDENTS IN DATABASE")
+        print("="*60)
+        
+        registrations = list(self.main_collection.find({}))
+        if not registrations:
+            print("❌ No students registered")
+            return
+        
+        for reg in registrations:
+            student_name = reg.get("studentname")
+            bracelet_id = reg.get("bracelet_id")
+            date_reg = reg.get("date_registered")
+            
+            print(f"\n👤 Student: {student_name}")
+            print(f"   🔗 Bracelet: {bracelet_id}")
+            print(f"   📅 Registered: {date_reg}")
+            
+            # Check if their collection exists
+            collection_name = f"{student_name}_db"
+            if collection_name in self.db.list_collection_names():
+                student_doc = self.db[collection_name].find_one({"student_name": student_name})
+                if student_doc:
+                    total_q = len(student_doc.get("questions", []))
+                    answered = sum(1 for q in student_doc["questions"] if q["student_answer"] is not None)
+                    score = student_doc.get("total_score", 0)
+                    print(f"   ✅ Progress: {answered}/{total_q} questions answered")
+                    print(f"   🏆 Score: {score}")
+                else:
+                    print(f"   ⚠️ Collection exists but no data found")
+            else:
+                print(f"   ❌ Collection {collection_name} not found")
+        
+        print("\n" + "="*60 + "\n")

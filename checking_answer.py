@@ -2,6 +2,7 @@ import time
 import threading
 import os
 import cv2
+from pymongo import MongoClient
 from alphabotFunction.YoLo.my_model_final.yolo_detect import (
     detect_student_open_hand,
     detect_student_close_hand,
@@ -22,6 +23,25 @@ last_student_name = None
 
 
 # ==========================================
+# 🧭 HELPER FUNCTION - GET BRACELET ID FROM DB
+# ==========================================
+def get_bracelet_id_by_student(student_name: str):
+    """Fetches the bracelet_id of a student from MongoDB."""
+    try:
+        client = MongoClient("mongodb://localhost:27017")
+        db = client["alphabot_db"]
+        collection = db["bracelet_registrations"]
+        record = collection.find_one({"studentname": student_name})
+        if record:
+            return record.get("bracelet_id")
+        else:
+            print(f"❌ No bracelet record found for student '{student_name}'")
+    except Exception as e:
+        print(f"❌ Error fetching bracelet_id from MongoDB: {e}")
+    return None
+
+
+# ==========================================
 # 🖐️ OPEN HAND DETECTION
 # ==========================================
 def run_yolo_detection_open():
@@ -36,7 +56,7 @@ def run_yolo_detection_open():
         return {
             "status": "cooldown",
             "student name": last_student_name,
-            "bracelet_id": last_student_name,
+            "bracelet_id": get_bracelet_id_by_student(last_student_name) if last_student_name else None,
             "hand_status": "open",
         }
 
@@ -59,7 +79,8 @@ def run_yolo_detection_open():
         except Exception:
             pass
 
-        result_data = {"student name": student_name, "bracelet_id": student_name, "hand_status": hand_status}
+        bracelet_id = get_bracelet_id_by_student(student_name)
+        result_data = {"student name": student_name, "bracelet_id": bracelet_id, "hand_status": hand_status}
 
         if not student_name or not hand_status:
             print("⚠️ No detection found (open-hand).")
@@ -95,7 +116,7 @@ def run_yolo_detection_close():
         return {
             "status": "cooldown",
             "student name": last_student_name,
-            "bracelet_id": last_student_name,
+            "bracelet_id": get_bracelet_id_by_student(last_student_name) if last_student_name else None,
             "hand_status": "close",
         }
 
@@ -118,7 +139,8 @@ def run_yolo_detection_close():
         except Exception:
             pass
 
-        result_data = {"student name": student_name, "bracelet_id": student_name, "hand_status": hand_status}
+        bracelet_id = get_bracelet_id_by_student(student_name)
+        result_data = {"student name": student_name, "bracelet_id": bracelet_id, "hand_status": hand_status}
 
         if not student_name or not hand_status:
             print("⚠️ No detection found (close-hand).")
