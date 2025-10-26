@@ -1,15 +1,17 @@
 from flask import Blueprint, jsonify, request
-from checking_answer import run_yolo_detection
+from checking_answer import run_yolo_detection_open  # ✅ open hand function
 from register_students_MVC.model import BraceletModelRegister
 import threading
 import time
 
+# Blueprint setup
 open_bp = Blueprint("open_bp", __name__)
 bracelet_model = BraceletModelRegister()
 
 # 🧠 Global flag + lock
 detection_running = False
 lock = threading.Lock()
+
 
 @open_bp.route("/open", methods=["POST"])
 def detect_open():
@@ -28,11 +30,11 @@ def detect_open():
         data = request.get_json(force=True)
         subject = data.get("choice", "").strip().lower()
         lesson = data.get("lesson", "").strip().lower()
-        
+
         print("📦 Raw frontend data:", data)
         print(f"🎯 Subject: {subject} | 📖 Lesson: {lesson}")
 
-        # ✅ Validation: kailangan may subject at lesson pareho
+        # ✅ Validation
         if not subject or not lesson:
             print("⚠️ Missing subject or lesson — detection aborted.")
             return jsonify({
@@ -40,14 +42,15 @@ def detect_open():
                 "message": "❌ Both 'choice' (subject) and 'lesson' are required to start detection."
             }), 400
 
-        # ✅ Run YOLO detection
+        # ✅ Run YOLO detection (OPEN)
         print("🎥 Running YOLO detection for /open ...")
-        result = run_yolo_detection()
+        result = run_yolo_detection_open()
 
+        # ✅ Handle failed detection
         if result.get("status") != "success":
             return jsonify({
                 "status": "error",
-                "message": "❌ No hand or student detected.",
+                "message": "❌ No hand or student detected (open).",
                 "details": result
             }), 400
 
@@ -69,7 +72,7 @@ def detect_open():
         }), 200
 
     finally:
-        # ⏳ Small cooldown para di mag-spam
+        # ⏳ Cooldown bago payagan ulit
         time.sleep(3)
         detection_running = False
         print("✅ Detection finished — system unlocked.")

@@ -1,97 +1,139 @@
 import time
 import threading
-from alphabotFunction.YoLo.my_model_final.yolo_detect import detect_student_and_hand
 import os
+import cv2
+from alphabotFunction.YoLo.my_model_final.yolo_detect import (
+    detect_student_open_hand,
+    detect_student_close_hand,
+)
 
-# Constants
-# Dynamically locate model relative to this file
+# === Constants ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "alphabotFunction", "YoLo", "my_model_final", "bracelet_identification_ncnn_model")
+MODEL_PATH = os.path.join(
+    BASE_DIR, "alphabotFunction", "YoLo", "my_model_final", "bracelet_identification_ncnn_model"
+)
 THRESHOLD = 0.85
 COOLDOWN = 2  # seconds
 
-# Global locks and trackers
+# === Globals ===
 detection_lock = threading.Lock()
 last_detection_time = 0
 last_student_name = None
 
 
-def run_yolo_detection():
+# ==========================================
+# 🖐️ OPEN HAND DETECTION
+# ==========================================
+def run_yolo_detection_open():
     """
-    Runs YOLO + MediaPipe detection once.
-    Prevents overlapping calls and filters random false detections.
+    Runs YOLO + MediaPipe detection for OPEN hand gesture.
     """
     global last_detection_time, last_student_name
 
-    # 🕒 Prevent repeated detections too fast
     remaining_cooldown = COOLDOWN - (time.time() - last_detection_time)
     if remaining_cooldown > 0:
-        print(f"🕒 Cooldown active ({remaining_cooldown:.1f}s left)... skipping duplicate detection.")
+        print(f"🕒 Cooldown active ({remaining_cooldown:.1f}s left)... skipping duplicate open-hand detection.")
         return {
             "status": "cooldown",
             "student name": last_student_name,
             "bracelet_id": last_student_name,
-            "hand_status": None
+            "hand_status": "open",
         }
 
-    # 🧠 Check if another detection is already running
     if detection_lock.locked():
-        print("⚠️ Detection already running, skipping new request.")
-        return {
-            "status": "busy",
-            "student name": None,
-            "bracelet_id": None,
-            "hand_status": None
-        }
+        print("⚠️ Detection already running (open-hand). Skipping new request.")
+        return {"status": "busy", "student name": None, "bracelet_id": None, "hand_status": None}
 
     with detection_lock:
-        print("🎥 Starting YOLO detection safely...")
-        time.sleep(1)  # optional delay
+        print("🎥 Starting YOLO (OPEN HAND) detection safely...")
+        time.sleep(1)
 
         try:
-            student_name, hand_status = detect_student_and_hand(MODEL_PATH, THRESHOLD)
+            student_name, hand_status = detect_student_open_hand(MODEL_PATH, THRESHOLD)
         except Exception as e:
-            print(f"❌ Error during YOLO detection: {e}")
-            return {
-                "status": "error",
-                "student name": None,
-                "bracelet_id": None,
-                "hand_status": None,
-                "error": str(e)
-            }
+            print(f"❌ Error during YOLO open-hand detection: {e}")
+            return {"status": "error", "student name": None, "hand_status": None, "error": str(e)}
 
-        # 🧹 Cleanup
         try:
-            import cv2
             cv2.destroyAllWindows()
         except Exception:
             pass
 
-        # 📊 Prepare result
-        result_data = {
-            "student name": student_name,
-            "bracelet_id": student_name,
-            "hand_status": hand_status
-        }
+        result_data = {"student name": student_name, "bracelet_id": student_name, "hand_status": hand_status}
 
         if not student_name or not hand_status:
-            print("⚠️ No detection found.")
+            print("⚠️ No detection found (open-hand).")
             result_data["status"] = "failed"
         else:
-            # ✅ Valid detection
-            print(f"✅ Detected: {student_name} | Hand: {hand_status}")
+            print(f"✅ Detected: {student_name} | Hand: {hand_status} (open-hand)")
             result_data["status"] = "success"
-
-            # 🔒 Track last detection for next runs
             last_student_name = student_name
             last_detection_time = time.time()
 
-            # 🔔 Print when it's ready again
             def cooldown_notifier():
                 time.sleep(COOLDOWN)
-                print("✅ Cooldown finished — ready for next detection request!")
+                print("✅ Cooldown finished — ready for next OPEN-hand detection!")
 
             threading.Thread(target=cooldown_notifier, daemon=True).start()
 
-        print(f"🖐️ Final YOLO output → {result_data}")
+        print(f"🖐️ Final YOLO OPEN output → {result_data}")
+        return result_data
+
+
+# ==========================================
+# ✊ CLOSE HAND DETECTION
+# ==========================================
+def run_yolo_detection_close():
+    """
+    Runs YOLO + MediaPipe detection for CLOSE hand gesture.
+    """
+    global last_detection_time, last_student_name
+
+    remaining_cooldown = COOLDOWN - (time.time() - last_detection_time)
+    if remaining_cooldown > 0:
+        print(f"🕒 Cooldown active ({remaining_cooldown:.1f}s left)... skipping duplicate close-hand detection.")
+        return {
+            "status": "cooldown",
+            "student name": last_student_name,
+            "bracelet_id": last_student_name,
+            "hand_status": "close",
+        }
+
+    if detection_lock.locked():
+        print("⚠️ Detection already running (close-hand). Skipping new request.")
+        return {"status": "busy", "student name": None, "bracelet_id": None, "hand_status": None}
+
+    with detection_lock:
+        print("🎥 Starting YOLO (CLOSE HAND) detection safely...")
+        time.sleep(1)
+
+        try:
+            student_name, hand_status = detect_student_close_hand(MODEL_PATH, THRESHOLD)
+        except Exception as e:
+            print(f"❌ Error during YOLO close-hand detection: {e}")
+            return {"status": "error", "student name": None, "hand_status": None, "error": str(e)}
+
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
+
+        result_data = {"student name": student_name, "bracelet_id": student_name, "hand_status": hand_status}
+
+        if not student_name or not hand_status:
+            print("⚠️ No detection found (close-hand).")
+            result_data["status"] = "failed"
+        else:
+            print(f"✅ Detected: {student_name} | Hand: {hand_status} (close-hand)")
+            result_data["status"] = "success"
+            last_student_name = student_name
+            last_detection_time = time.time()
+
+            def cooldown_notifier():
+                time.sleep(COOLDOWN)
+                print("✅ Cooldown finished — ready for next CLOSE-hand detection!")
+
+            threading.Thread(target=cooldown_notifier, daemon=True).start()
+
+        print(f"✊ Final YOLO CLOSE output → {result_data}")
         return result_data

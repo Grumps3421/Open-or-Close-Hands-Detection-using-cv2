@@ -27,7 +27,7 @@ class BraceletModelRegister:
                     {"question": "5. Which one is a sibling?", "answer": "Open"}
                 ],
                 "Lesson 2: Respecting Elders": [
-                    {"question": "1. Is saying thank you to your parents respectful?", "answer": "Open"},
+                    {"question": "1. Is saying thank you to your parents respectful?", "answer": "Close"},
                     {"question": "2. Is keeping yourself clean and brushing your teeth a way of respecting yourself?", "answer": "Open"},
                     {"question": "3. Is shouting at your family members a respectful attitude?", "answer": "Close"},
                     {"question": "4. Is Helping your parents with simple chorse a respectful act?", "answer": "Open"},

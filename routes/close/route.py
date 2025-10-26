@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from checking_answer import run_yolo_detection
+from checking_answer import run_yolo_detection_close  # ✅ close hand function
 from register_students_MVC.model import BraceletModelRegister
 import threading
 import time
@@ -30,11 +30,11 @@ def detect_close():
         data = request.get_json(force=True)
         subject = data.get("choice", "").strip().lower()
         lesson = data.get("lesson", "").strip().lower()
-        
+
         print("📦 Raw frontend data:", data)
         print(f"🎯 Subject: {subject} | 📖 Lesson: {lesson}")
 
-        # ✅ Validation: kailangan may subject at lesson pareho
+        # ✅ Validation
         if not subject or not lesson:
             print("⚠️ Missing subject or lesson — detection aborted.")
             return jsonify({
@@ -42,19 +42,19 @@ def detect_close():
                 "message": "❌ Both 'choice' (subject) and 'lesson' are required to start detection."
             }), 400
 
-        # ✅ Diretso YOLO detection
+        # ✅ Run YOLO detection (CLOSE)
         print("🎥 Running YOLO detection for /close ...")
-        result = run_yolo_detection()
+        result = run_yolo_detection_close()
 
-        # ✅ Kung failed detection
+        # ✅ Handle failed detection
         if result.get("status") != "success":
             return jsonify({
                 "status": "error",
-                "message": "❌ No hand or student detected.",
+                "message": "❌ No hand or student detected (close).",
                 "details": result
             }), 400
 
-        # ✅ Update DB (optional, kung may scoring)
+        # ✅ Update DB
         result["subject"] = subject
         result["lesson"] = lesson
         update_message = bracelet_model.update_student_score(result)
