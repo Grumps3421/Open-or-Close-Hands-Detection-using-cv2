@@ -10,6 +10,8 @@ from routes.close import close_bp
 from routes.open import open_bp
 from routes.progress_tracking import progressTracking_bp
 from routes.loginStudent import login_bp
+from routes.selectStudent import selectStudent_bp
+from routes.AR import AR_bp
 
 app.register_blueprint(main_bp)
 app.register_blueprint(register_bp)
@@ -17,6 +19,8 @@ app.register_blueprint(close_bp)
 app.register_blueprint(open_bp)
 app.register_blueprint(progressTracking_bp)
 app.register_blueprint(login_bp)
+app.register_blueprint(selectStudent_bp)
+app.register_blueprint(AR_bp)
 
 if __name__ == "__main__":
     app.run(debug=False)
