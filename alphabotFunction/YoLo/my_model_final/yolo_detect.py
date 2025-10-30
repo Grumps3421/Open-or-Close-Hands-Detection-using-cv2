@@ -13,7 +13,7 @@ def load_class_name_map():
     """Loads registered bracelets and their student names from MongoDB."""
     client = MongoClient("mongodb://localhost:27017")
     db = client["alphabot_db"]
-    collection = db["bracelet_registrations"]
+    collection = db["Present_db"]
     data = collection.find()
 
     class_map = {}
