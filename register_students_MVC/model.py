@@ -20,7 +20,7 @@ class BraceletModelRegister:
             },
             "gmrc": {
                 "Lesson 1: Good Manners": [
-                    {"question": "1. Which one is the mother?", "answer": "Open"},
+                    {"question": "1. Which one is the mother?", "answer": "Close"},
                     {"question": "2. Which one is the father?", "answer": "Close"},
                     {"question": "3. Which one is the child?", "answer": "Open"},
                     {"question": "4. Which picture shows a family?", "answer": "Close"},
@@ -153,11 +153,15 @@ class BraceletModelRegister:
         return True, f"✅ Registered {student_name} (reset quiz if retake)."
 
     # -----------------------------------------------------
-    # ✅ FIXED: Update score per answer & per subject
+    # ✅ NEW: Update score for ALL students (winner gets 1, others get 0)
     # -----------------------------------------------------
     def update_student_score(self, result_data):
-        """Update student score - uses bracelet_id from result_data"""
-        # ✅ FIX: Use the bracelet_id field directly (already provided by YOLO)
+        """
+        Update scores for ALL registered students:
+        - The student who answered correctly gets score = 1
+        - All other students get score = 0 for that question
+        """
+        # ✅ Get data from YOLO detection
         bracelet_id = result_data.get("bracelet_id", "").strip()
         student_name = result_data.get("student name", "").strip()
         hand_status = result_data.get("hand_status", "").capitalize()
@@ -192,57 +196,116 @@ class BraceletModelRegister:
         
         print(f"✅ Verified: {student_name} with bracelet {bracelet_id}")
 
-        # Now use the student name to access their collection
-        student_collection = self.db[f"{student_name}_db"]
-        student_doc = student_collection.find_one({"student_name": student_name})
+        # ✅ Get ALL registered students
+        all_registrations = list(self.main_collection.find({}))
+        if not all_registrations:
+            return "❌ No students registered in the system."
 
-        if not student_doc:
+        print(f"\n📋 Found {len(all_registrations)} registered students")
+
+        # ✅ Find the question index to update (first unanswered question in subject)
+        winner_collection = self.db[f"{student_name}_db"]
+        winner_doc = winner_collection.find_one({"student_name": student_name})
+
+        if not winner_doc:
             print(f"❌ Collection {student_name}_db not found or empty")
             return f"❌ No record found for {student_name}."
 
-        # Only update the first unanswered question from the same subject
-        question_found = False
-        for i, q in enumerate(student_doc["questions"]):
+        # Find the question to update
+        question_index = None
+        question_text = None
+        correct_answer = None
+
+        for i, q in enumerate(winner_doc["questions"]):
             if q["subject"].lower() == subject.lower() and q["student_answer"] is None:
-                q["student_answer"] = hand_status
-                q["score"] = 1 if q["student_answer"] == q["correct_answer"] else 0
-                print(f"📝 Updated Q{i+1}: {q['question'][:50]}...")
-                print(f"   Correct: {q['correct_answer']} | Student: {q['student_answer']} | Score: {q['score']}")
-                question_found = True
+                question_index = i
+                question_text = q["question"]
+                correct_answer = q["correct_answer"]
+                print(f"📝 Target Question #{i+1}: {question_text[:50]}...")
+                print(f"   Correct Answer: {correct_answer}")
                 break
 
-        if not question_found:
+        if question_index is None:
             print(f"⚠️ No unanswered questions found for subject: {subject}")
             return f"⚠️ All questions answered for {subject} or no questions found"
 
-        # Calculate total score
-        total_score = sum(q["score"] for q in student_doc["questions"])
+        # ✅ Check if the winner answered correctly
+        is_correct = hand_status == correct_answer
+        winner_score = 1 if is_correct else 0
 
-        # Update the database
-        student_collection.update_one(
-            {"student_name": student_name},
-            {
-                "$set": {
-                    "questions": student_doc["questions"],
-                    "total_score": total_score,
-                    "attempt_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"\n🎯 Winner Analysis:")
+        print(f"   Student: {student_name}")
+        print(f"   Answer: {hand_status}")
+        print(f"   Correct: {is_correct}")
+        print(f"   Score: {winner_score}")
+
+        # ✅ UPDATE ALL STUDENTS
+        print(f"\n🔄 Updating all {len(all_registrations)} students...")
+        
+        for reg in all_registrations:
+            current_student = reg["studentname"]
+            current_collection = self.db[f"{current_student}_db"]
+            current_doc = current_collection.find_one({"student_name": current_student})
+
+            if not current_doc:
+                print(f"⚠️ Skipping {current_student} - no data found")
+                continue
+
+            # Check if this question exists for this student
+            if question_index >= len(current_doc["questions"]):
+                print(f"⚠️ Skipping {current_student} - question index out of range")
+                continue
+
+            # Get the question at the same index
+            question = current_doc["questions"][question_index]
+
+            # Skip if already answered
+            if question["student_answer"] is not None:
+                print(f"⏭️ Skipping {current_student} - already answered this question")
+                continue
+
+            # Determine score: only the winner who answered correctly gets 1, everyone else gets 0
+            if current_student == student_name:
+                # This is the student who answered
+                question["student_answer"] = hand_status
+                question["score"] = winner_score
+                print(f"✅ {current_student} (WINNER): Answer={hand_status}, Score={winner_score}")
+            else:
+                # This is another student who didn't answer
+                question["student_answer"] = "No answer"
+                question["score"] = 0
+                print(f"❌ {current_student}: No answer, Score=0")
+
+            # Calculate new total score
+            new_total_score = sum(q["score"] for q in current_doc["questions"])
+
+            # Update the database
+            current_collection.update_one(
+                {"student_name": current_student},
+                {
+                    "$set": {
+                        "questions": current_doc["questions"],
+                        "total_score": new_total_score,
+                        "attempt_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
                 }
-            }
-        )
+            )
 
-        print(f"💾 Database updated - Total Score: {total_score}")
+            print(f"💾 {current_student} - New Total Score: {new_total_score}")
 
-        # Check if finished that subject only
-        subject_questions = [q for q in student_doc["questions"] if q["subject"].lower() == subject.lower()]
-        answered_count = sum(1 for q in subject_questions if q["student_answer"] is not None)
+        # ✅ Check progress for the subject
+        subject_questions = [q for q in winner_doc["questions"] if q["subject"].lower() == subject.lower()]
+        answered_count = sum(1 for q in subject_questions if q["student_answer"] is not None) + 1  # +1 for current answer
         total_count = len(subject_questions)
         
         subject_done = answered_count == total_count
 
+        print(f"\n✅ Update completed for all students!")
+        
         if subject_done:
-            return f"🏁 {student_name} finished {subject}! ({answered_count}/{total_count}) Total score: {total_score}"
+            return f"🏁 Question answered! {student_name} scored {winner_score} point. Subject {subject} progress: {answered_count}/{total_count} completed."
         else:
-            return f"✅ Updated answer for {student_name} ({subject}) - Progress: {answered_count}/{total_count} | Total score: {total_score}"
+            return f"✅ Question answered! {student_name} scored {winner_score} point. Subject {subject} progress: {answered_count}/{total_count}."
 
     # -----------------------------------------------------
     # ✅ Utilities
