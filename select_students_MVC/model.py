@@ -14,6 +14,7 @@ class AlphaBotModel:
         return [(doc["studentname"], doc["bracelet_id"]) for doc in data]
 
     def add_present_students(self, students):
+        self.present.delete_many({})
         for name, bracelet_id in students:
             entry = {
                 "studentname": name,
