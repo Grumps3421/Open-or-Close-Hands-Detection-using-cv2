@@ -16,8 +16,10 @@ class ARMouseController:
         
     def start(self):
         if self.running:
+            print("⚠️ AR is already running.")
             return {"status": "already_running"}
         
+        print("🎬 Starting AR tracking...")
         self.running = True
         self.thread = threading.Thread(target=self._run_tracking, daemon=True)
         self.thread.start()
@@ -25,16 +27,22 @@ class ARMouseController:
     
     def stop(self):
         if not self.running:
+            print("⚠️ AR is not running, no need to stop.")
             return {"status": "not_running"}
         
+        print("🛑 Stopping AR tracking...")
         self.running = False
-        if self.thread:
+        
+        # Give the thread a bit of time to close camera cleanly
+        if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2)
+        
+        print("✅ AR stopped successfully.")
         return {"status": "stopped"}
     
     def _run_tracking(self):
         # Initialize video capture and hand detection
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(1)
         hand_detector = mp.solutions.hands.Hands(
             min_detection_confidence=0.7, 
             min_tracking_confidence=0.7, 

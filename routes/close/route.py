@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from checking_answer import run_yolo_detection_close  # ✅ close hand function
 from register_students_MVC.model import BraceletModelRegister
+from routes.AR.route import ar_controller
 import threading
 import time
 
@@ -41,10 +42,21 @@ def detect_close():
                 "status": "error",
                 "message": "❌ Both 'choice' (subject) and 'lesson' are required to start detection."
             }), 400
+        
+        # 📴 STOP AR before YOLO detection
+        print("🧠 Stopping AR before YOLO detection...")
+        stop_result = ar_controller.stop()
+        print(f"🛑 AR stop result: {stop_result['status']}")
+        time.sleep(1)  # give time to release the camera properly
 
         # ✅ Run YOLO detection (CLOSE)
         print("🎥 Running YOLO detection for /close ...")
         result = run_yolo_detection_close()
+
+        # OPEN AR AFTER DETECTION
+        print("🔁 Restarting AR after YOLO detection...")
+        start_result = ar_controller.start()
+        print(f"✅ AR start result: {start_result['status']}")
 
         # ✅ Handle failed detection
         if result.get("status") != "success":
