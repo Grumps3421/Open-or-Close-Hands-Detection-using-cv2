@@ -6,6 +6,7 @@ class BraceletModelRegister:
         self.client = MongoClient(db_url)
         self.db = self.client[db_name]
         self.main_collection = self.db["bracelet_registrations"]
+        self.present_collection = self.db["Present_db"]  # ✅ NEW: Reference to Present_db
 
         # ✅ Fixed subjects and question sets
         self.fixed_questions = {
@@ -153,13 +154,14 @@ class BraceletModelRegister:
         return True, f"✅ Registered {student_name} (reset quiz if retake)."
 
     # -----------------------------------------------------
-    # ✅ NEW: Update score for ALL students (winner gets 1, others get 0)
+    # ✅ FIXED: Update score ONLY for PRESENT students
     # -----------------------------------------------------
     def update_student_score(self, result_data):
         """
-        Update scores for ALL registered students:
+        Update scores ONLY for students in Present_db:
         - The student who answered correctly gets score = 1
-        - All other students get score = 0 for that question
+        - Other PRESENT students get score = 0 for that question
+        - Students NOT in Present_db are completely ignored
         """
         # ✅ Get data from YOLO detection
         bracelet_id = result_data.get("bracelet_id", "").strip()
@@ -196,12 +198,20 @@ class BraceletModelRegister:
         
         print(f"✅ Verified: {student_name} with bracelet {bracelet_id}")
 
-        # ✅ Get ALL registered students
-        all_registrations = list(self.main_collection.find({}))
-        if not all_registrations:
-            return "❌ No students registered in the system."
+        # ✅ CRITICAL FIX: Get ONLY students who are PRESENT (not all registered)
+        present_students = list(self.present_collection.find({}))
+        
+        if not present_students:
+            return "❌ No students marked as present in Present_db."
 
-        print(f"\n📋 Found {len(all_registrations)} registered students")
+        print(f"\n📋 Found {len(present_students)} PRESENT students")
+
+        # ✅ Check if the detected student is actually present
+        present_student_names = [p.get("studentname", "").lower() for p in present_students]
+        
+        if student_name.lower() not in present_student_names:
+            print(f"⚠️ Student '{student_name}' is registered but NOT marked as present!")
+            return f"❌ {student_name} is not marked as present. Only present students can answer."
 
         # ✅ Find the question index to update (first unanswered question in subject)
         winner_collection = self.db[f"{student_name}_db"]
@@ -239,11 +249,15 @@ class BraceletModelRegister:
         print(f"   Correct: {is_correct}")
         print(f"   Score: {winner_score}")
 
-        # ✅ UPDATE ALL STUDENTS
-        print(f"\n🔄 Updating all {len(all_registrations)} students...")
+        # ✅ UPDATE ONLY PRESENT STUDENTS
+        print(f"\n🔄 Updating only {len(present_students)} PRESENT students...")
         
-        for reg in all_registrations:
-            current_student = reg["studentname"]
+        for present_student in present_students:
+            current_student = present_student.get("studentname")
+            
+            if not current_student:
+                continue
+                
             current_collection = self.db[f"{current_student}_db"]
             current_doc = current_collection.find_one({"student_name": current_student})
 
@@ -265,13 +279,13 @@ class BraceletModelRegister:
                 continue
 
             # Determine score: only the winner who answered correctly gets 1, everyone else gets 0
-            if current_student == student_name:
+            if current_student.lower() == student_name.lower():
                 # This is the student who answered
                 question["student_answer"] = hand_status
                 question["score"] = winner_score
                 print(f"✅ {current_student} (WINNER): Answer={hand_status}, Score={winner_score}")
             else:
-                # This is another student who didn't answer
+                # This is another PRESENT student who didn't answer
                 question["student_answer"] = "No answer"
                 question["score"] = 0
                 print(f"❌ {current_student}: No answer, Score=0")
@@ -300,7 +314,7 @@ class BraceletModelRegister:
         
         subject_done = answered_count == total_count
 
-        print(f"\n✅ Update completed for all students!")
+        print(f"\n✅ Update completed for all PRESENT students!")
         
         if subject_done:
             return f"🏁 Question answered! {student_name} scored {winner_score} point. Subject {subject} progress: {answered_count}/{total_count} completed."
@@ -352,6 +366,13 @@ class BraceletModelRegister:
             print(f"   🔗 Bracelet: {bracelet_id}")
             print(f"   📅 Registered: {date_reg}")
             
+            # Check if they're present
+            is_present = self.present_collection.find_one({"studentname": student_name})
+            if is_present:
+                print(f"   ✅ Status: PRESENT")
+            else:
+                print(f"   ❌ Status: NOT PRESENT (will not record answers)")
+            
             # Check if their collection exists
             collection_name = f"{student_name}_db"
             if collection_name in self.db.list_collection_names():
@@ -360,7 +381,7 @@ class BraceletModelRegister:
                     total_q = len(student_doc.get("questions", []))
                     answered = sum(1 for q in student_doc["questions"] if q["student_answer"] is not None)
                     score = student_doc.get("total_score", 0)
-                    print(f"   ✅ Progress: {answered}/{total_q} questions answered")
+                    print(f"   📊 Progress: {answered}/{total_q} questions answered")
                     print(f"   🏆 Score: {score}")
                 else:
                     print(f"   ⚠️ Collection exists but no data found")

@@ -13,6 +13,32 @@ class ARMouseController:
     def __init__(self):
         self.running = False
         self.thread = None
+    
+    def _find_available_camera(self, max_cameras=5):
+        """
+        Dynamically searches for an available camera.
+        Returns the index of the first working camera, or None if none found.
+        """
+        print("🔍 Searching for available cameras...")
+        
+        for camera_index in range(max_cameras):
+            cap = cv2.VideoCapture(camera_index)
+            
+            if cap.isOpened():
+                # Try to read a frame to confirm it's actually working
+                ret, frame = cap.read()
+                cap.release()
+                
+                if ret and frame is not None:
+                    print(f"✅ Found working camera at index {camera_index}")
+                    return camera_index
+                else:
+                    print(f"⚠️ Camera {camera_index} opened but couldn't read frame")
+            else:
+                print(f"❌ No camera at index {camera_index}")
+        
+        print("❌ No available cameras found")
+        return None
         
     def start(self):
         if self.running:
@@ -41,8 +67,16 @@ class ARMouseController:
         return {"status": "stopped"}
     
     def _run_tracking(self):
+        # Find available camera dynamically
+        camera_index = self._find_available_camera()
+        
+        if camera_index is None:
+            print("❌ ERROR: No camera available. AR tracking cannot start.")
+            self.running = False
+            return
+        
         # Initialize video capture and hand detection
-        cap = cv2.VideoCapture(1)
+        cap = cv2.VideoCapture(camera_index)
         hand_detector = mp.solutions.hands.Hands(
             min_detection_confidence=0.7, 
             min_tracking_confidence=0.7, 
