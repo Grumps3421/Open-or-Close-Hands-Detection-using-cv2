@@ -20,7 +20,7 @@ class BraceletModelRegister:
             },
             "gmrc": {
                 "Lesson 1: Good Manners": [
-                    {"question": "1. Which one is the mother?", "answer": "Close"},
+                    {"question": "1. Which one is the mother?", "answer": "Open"},
                     {"question": "2. Which one is the father?", "answer": "Close"},
                     {"question": "3. Which one is the child?", "answer": "Open"},
                     {"question": "4. Which picture shows a family?", "answer": "Close"},
