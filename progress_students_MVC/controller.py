@@ -1,280 +1,217 @@
-from models import AlphaBotModel
-from ui import AlphaBotView
 import tkinter as tk
-from tkinter import ttk, Toplevel
+from tkinter import ttk
+from ui import AlphaBotView
+from models import AlphaBotModel
+from tkinter import messagebox
 
 class AlphaBotController:
-    def __init__(self, root):
+    def __init__(self):
         self.model = AlphaBotModel()
-        self.view = AlphaBotView(root, self)
+        self.view = AlphaBotView(self)
+        self.registered = self.model.load_registered_students()
+        self.view.render_main_buttons(self.registered)
 
-    # ---------------- Event Handlers ----------------
-    def show_student_profile(self, bracelet):
-        student = self.model.get_student(bracelet)
-        if not student:
-            self.view.show_error("Uh-oh!", f"Bracelet {bracelet} is not registered!")
-        else:
-            self.view.show_student_profile_window(student)
+    # ==================================================
+    # PROGRESS WINDOW
+    # ==================================================
+    def open_progress(self, bracelet_id):
+        studentname = self.registered.get(bracelet_id, "Unregistered")
 
-    def show_leaderboard(self):
-        students = self.model.get_all_students()
-        subjects = {}
-        for student in students:
-            for subject in student.get("total_subjects", []):
-                subject_name = subject["subject_name"]
-                scores = []
-                for l in subject["lessons"]:
-                    if l.get("attempts"):
-                        latest = l["attempts"][-1]
-                        if len(l["questions"]) > 0:
-                            scores.append(latest["score"] / len(l["questions"]) * 100)
-                if scores:
-                    avg_score = sum(scores) / len(scores)
-                    if subject_name not in subjects:
-                        subjects[subject_name] = []
-                    subjects[subject_name].append((student["studentname"], avg_score))
-        self.view.show_leaderboard_window(subjects)
+        if studentname == "Unregistered":
+            self.view.show_message("Not Registered", f"{bracelet_id} is not registered yet.")
+            return
 
-    # ---------------- UI Windows ----------------
-    def _show_attempts_ui(self, lesson):
-        attempts_window = Toplevel()
-        attempts_window.title(f"Attempts - {lesson['lesson_title']}")
-        attempts_window.attributes('-fullscreen', True)
-        attempts_window.configure(bg="#FFF9E3")
+        categorized = self.model.get_student_progress(bracelet_id)
+        if not categorized:
+            self.view.show_message("No Progress Found",
+                                   f"No collection found for {studentname} ({bracelet_id}) with 50 questions.")
+            return
 
-        # Back button
-        back_button = tk.Button(attempts_window, text="🔙 Back",
-                                command=attempts_window.destroy,
-                                font=("Comic Sans MS", 16, "bold"),
-                                bg="#FFB6B6", fg="black", padx=20, pady=10)
-        back_button.pack(anchor="ne", padx=15, pady=15)
+        progress_window = tk.Toplevel(self.view.root)
+        progress_window.title(f"{studentname}'s Progress")
+        progress_window.attributes('-fullscreen', True)
+        progress_window.configure(bg="#FFF8E7")
 
-        tk.Label(attempts_window, text=f"📖 All Attempts for {lesson['lesson_title']}",
-                 font=("Comic Sans MS", 28, "bold"), bg="#FFF9E3").pack(pady=10)
+        tk.Label(progress_window, text=f"🎓 {studentname}'s Learning Progress 🎓",
+                 font=("Comic Sans MS", 22, "bold"), fg="#333", bg="#FFF8E7").pack(pady=20)
 
-        # Scrollable frame
-        canvas = tk.Canvas(attempts_window, bg="#FFF9E3", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(attempts_window, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg="#FFF9E3")
+        content_frame = tk.Frame(progress_window, bg="#FFF8E7")
+        content_frame.pack(fill="both", expand=True, padx=30, pady=10)
 
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        pastel_colors = ["#FFD1DC", "#B5EAD7", "#FFDAC1", "#C7CEEA", "#FFF5BA"]
 
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        def show_lesson_questions(subject, lesson, lesson_number):
+            for widget in content_frame.winfo_children():
+                widget.destroy()
 
-        # Grid of attempts
-        for idx, attempt in enumerate(lesson.get("attempts", []), start=1):
-            row = (idx - 1) // 3
-            col = (idx - 1) % 3
-            frame = tk.Frame(scrollable_frame, bg="#FAF3DD", bd=2, relief="ridge", padx=10, pady=10)
-            frame.grid(row=row, column=col, padx=15, pady=15, sticky="nsew")
+            tk.Label(content_frame, text=f"📘 {subject} - Lesson {lesson_number}",
+                     font=("Comic Sans MS", 18, "bold"),
+                     bg="#FFF8E7", fg="#333").pack(pady=10)
 
-            tk.Label(frame, text=f"Attempt {idx} - 📅 {attempt['date']}",
-                     font=("Comic Sans MS", 16, "bold"), bg="#FAF3DD").pack(anchor="w")
-            tk.Label(frame, text=f"⭐ Score: {attempt['score']} / {len(lesson['questions'])}",
-                     font=("Comic Sans MS", 14), bg="#FAF3DD").pack(anchor="w")
-            tk.Label(frame, text=f"🏅 Status: {attempt.get('status','Doing great!')}",
-                     font=("Comic Sans MS", 14), bg="#FAF3DD").pack(anchor="w")
+            questions = categorized[subject][lesson]
+            total_q = len(questions)
+            correct_q = sum(1 for q in questions if str(q.get("student_answer", "")).strip() ==
+                            str(q.get("correct_answer", "")).strip())
 
-            if attempt.get("wrong_questions"):
-                tk.Label(frame, text="❌ Wrong:", font=("Comic Sans MS", 12, "bold"),
-                         bg="#FAF3DD", fg="red").pack(anchor="w")
-                for q in attempt["wrong_questions"]:
-                    tk.Label(frame, text=f"   - {q}", font=("Comic Sans MS", 12),
-                             bg="#FAF3DD", fg="red").pack(anchor="w")
+            progress_percent = (correct_q / total_q) * 100 if total_q > 0 else 0
 
-            if attempt.get("correct_questions"):
-                tk.Label(frame, text="✅ Correct:", font=("Comic Sans MS", 12, "bold"),
-                         bg="#FAF3DD", fg="green").pack(anchor="w")
-                for q in attempt["correct_questions"]:
-                    tk.Label(frame, text=f"   - {q}", font=("Comic Sans MS", 12),
-                             bg="#FAF3DD", fg="green").pack(anchor="w")
+            tk.Label(content_frame,
+                     text=f"Progress: {correct_q}/{total_q} correct 🌟",
+                     font=("Comic Sans MS", 14, "bold"),
+                     bg="#FFF8E7").pack(pady=(5, 0))
 
-    def _show_subject_detail_ui(self, subject):
-        detail_window = Toplevel()
-        detail_window.title(subject['subject_name'])
-        detail_window.attributes('-fullscreen', True)
-        detail_window.configure(bg="#FFF9E3")
+            progress = ttk.Progressbar(content_frame, orient="horizontal", length=400, mode="determinate")
+            progress["value"] = progress_percent
+            progress.pack(pady=5)
 
-        back_button = tk.Button(detail_window, text="🔙 Back",
-                                command=detail_window.destroy,
-                                font=("Comic Sans MS", 16, "bold"),
-                                bg="#FFB6B6", fg="black", padx=20, pady=10)
-        back_button.pack(anchor="ne", padx=15, pady=15)
+            style = ttk.Style()
+            style.configure("Treeview.Heading", font=("Comic Sans MS", 16, "bold"))
+            style.configure("Treeview", font=("Comic Sans MS", 18), rowheight=50)
 
-        tk.Label(detail_window, text=f"📘 {subject['subject_name']}",
-                 font=("Comic Sans MS", 28, "bold"), bg="#FFF9E3").pack(pady=10)
+            tree = ttk.Treeview(content_frame, columns=("Question", "Answer", "Result"), show="headings", height=10)
 
-        completed = sum(1 for l in subject['lessons'] if l.get("attempts"))
-        total = len(subject['lessons'])
-        percent = (completed / total) * 100 if total > 0 else 0
+            # Headings
+            tree.heading("Question", text="🧠 Question")
+            tree.heading("Answer", text="✏️ Answer")
+            tree.heading("Result", text="🌟 Result")
 
-        progress = ttk.Progressbar(detail_window, orient="horizontal", length=700, mode="determinate")
-        progress["value"] = percent
-        progress.pack(pady=2)
+            # Column widths and alignment
+            tree.column("Question", width=600, anchor="w")  # Left-aligned
+            tree.column("Answer", width=150, anchor="center")  # Centered
+            tree.column("Result", width=100, anchor="center")  # Centered
 
-        tk.Label(detail_window, text=f"{percent:.0f}% Complete",
-                 font=("Comic Sans MS", 18, "bold"), fg="blue", bg="#FFF9E3").pack(pady=(0, 10))
+            tree.pack(padx=20, pady=10, fill="both", expand=True)
 
-        # Scroll horizontally
-        canvas = tk.Canvas(detail_window, bg="#FFF9E3", highlightthickness=0, height=500)
-        scrollbar = ttk.Scrollbar(detail_window, orient="horizontal", command=canvas.xview)
-        scrollable_frame = tk.Frame(canvas, bg="#FFF9E3")
+            # Insert data
+            for q in questions:
+                student_answer = str(q.get("student_answer", "None"))  # Ensure "None" shows
+                correct = "✅" if q.get("score", 0) > 0 else "❌"
+                tree.insert("", "end", values=(q.get("question", "N/A"), student_answer, correct))
 
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(xscrollcommand=scrollbar.set)
 
-        canvas.pack(fill="both", expand=True)
-        scrollbar.pack(fill="x")
+            tk.Button(content_frame, text="⬅ Back to Lessons",
+                      command=lambda: show_lesson_buttons(subject),
+                      bg="#A3D8F4", font=("Comic Sans MS", 13, "bold"),
+                      relief="raised", width=22, height=2).pack(pady=20)
 
-        # Lessons
-        for idx, lesson in enumerate(subject['lessons']):
-            frame = tk.Frame(scrollable_frame, bg="#FAF3DD", bd=2, relief="ridge", width=300, height=420)
-            frame.grid(row=0, column=idx, padx=20, pady=10)
-            frame.grid_propagate(False)
+        def show_lesson_buttons(subject):
+            for widget in content_frame.winfo_children():
+                widget.destroy()
 
-            tk.Label(frame, text=f"📗 {lesson['lesson_title']}",
-                     font=("Comic Sans MS", 16, "bold"), bg="#FAF3DD").pack(anchor="w", padx=10)
+            tk.Label(content_frame, text=f"📚 {subject} Lessons",
+                     font=("Comic Sans MS", 18, "bold"), bg="#FFF8E7").pack(pady=10)
 
-            if lesson.get("attempts"):
-                latest = lesson["attempts"][-1]
-                total_q = len(lesson['questions'])
-                score_percent = (latest['score'] / total_q) * 100 if total_q > 0 else 0
+            lessons = list(categorized[subject].keys())
+            btn_frame = tk.Frame(content_frame, bg="#FFF8E7")
+            btn_frame.pack(pady=30)
 
-                score_bar = ttk.Progressbar(frame, orient="horizontal", length=250, mode="determinate")
-                score_bar["value"] = score_percent
-                score_bar.pack(padx=10)
+            for i, lesson in enumerate(lessons):
+                color = pastel_colors[i % len(pastel_colors)]
+                tk.Button(btn_frame, text=f"📖 Lesson {i + 1}",
+                          command=lambda s=subject, l=lesson, n=i + 1: show_lesson_questions(s, l, n),
+                          width=18, height=3, bg=color,
+                          font=("Comic Sans MS", 14, "bold")).grid(row=i // 3, column=i % 3, padx=25, pady=20)
 
-                tk.Label(frame, text=f"{score_percent:.0f}% Correct",
-                         font=("Comic Sans MS", 12, "bold"), fg="blue", bg="#FAF3DD").pack()
-                tk.Label(frame, text=f"⭐ {latest['score']} / {total_q}",
-                         font=("Comic Sans MS", 14, "bold"), fg="green", bg="#FAF3DD").pack(anchor="w", padx=10)
-                tk.Label(frame, text=f"📅 Date: {latest['date']}",
-                         font=("Comic Sans MS", 12), bg="#FAF3DD").pack(anchor="w", padx=10)
-                tk.Label(frame, text=f"🏅 Status: {latest.get('status','Doing great!')}",
-                         font=("Comic Sans MS", 12), bg="#FAF3DD").pack(anchor="w", padx=10)
+            tk.Button(content_frame, text="⬅ Back to Subjects",
+                      command=show_subject_buttons,
+                      bg="#A3D8F4", font=("Comic Sans MS", 13, "bold"),
+                      relief="raised", width=22, height=2).pack(pady=10)
 
-                tk.Button(frame, text="📖 View Attempts", bg="#ADD8E6",
-                          font=("Comic Sans MS", 12, "bold"),
-                          command=lambda l=lesson: self._show_attempts_ui(l)).pack(pady=5)
-            else:
-                tk.Label(frame, text="🛌 Lesson not yet taken.",
-                         font=("Comic Sans MS", 12, "italic"), bg="#FAF3DD").pack(anchor="w", padx=10)
+        def show_subject_buttons():
+            for widget in content_frame.winfo_children():
+                widget.destroy()
 
-    def _show_student_profile_ui(self, student):
-        profile_window = Toplevel()
-        profile_window.title(f"{student['studentname']}'s Profile")
-        profile_window.attributes('-fullscreen', True)
-        profile_window.configure(bg="#FFF9E3")
+            tk.Label(content_frame, text="✨ Choose a Subject ✨",
+                     font=("Comic Sans MS", 18, "bold"), bg="#FFF8E7").pack(pady=10)
 
-        tk.Button(profile_window, text="🔙 Back", command=profile_window.destroy,
-                  font=("Comic Sans MS", 16, "bold"),
-                  bg="#FFB6B6", fg="black", padx=20, pady=10).pack(anchor="ne", padx=15, pady=15)
+            subjects = list(categorized.keys())
+            btn_frame = tk.Frame(content_frame, bg="#FFF8E7")
+            btn_frame.pack(pady=30)
 
-        canvas = tk.Canvas(profile_window, bg="#FFF9E3", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(profile_window, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg="#FFF9E3")
+            for i, subject in enumerate(subjects):
+                color = pastel_colors[i % len(pastel_colors)]
+                tk.Button(btn_frame, text=f"📚 {subject}",
+                          command=lambda s=subject: show_lesson_buttons(s),
+                          width=18, height=3, bg=color,
+                          font=("Comic Sans MS", 14, "bold")).grid(row=i // 3, column=i % 3, padx=25, pady=20)
 
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+            tk.Button(content_frame, text="❌ Close Window",
+                      command=progress_window.destroy,
+                      bg="#F77F00", fg="white",
+                      font=("Comic Sans MS", 13, "bold"),
+                      relief="raised", width=15, height=2).pack(pady=10)
 
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        show_subject_buttons()
 
-        tk.Label(scrollable_frame, text="🧒", font=("Arial", 60), bg="#FFF9E3").grid(row=0, column=0, rowspan=3, padx=20, pady=10)
-        tk.Label(scrollable_frame, text=f"👦 Name: {student['studentname']}",
-                 font=("Comic Sans MS", 20, "bold"), bg="#FFF9E3").grid(row=0, column=1, sticky="w")
-        tk.Label(scrollable_frame, text=f"🎟️ Bracelet #: {student['bracelet_id']}",
-                 font=("Comic Sans MS", 18), bg="#FFF9E3").grid(row=1, column=1, sticky="w")
-        tk.Label(scrollable_frame, text=f"📚 Subjects Enrolled: {len(student['total_subjects'])}",
-                 font=("Comic Sans MS", 18), bg="#FFF9E3").grid(row=2, column=1, sticky="w")
+    # ==================================================
+    # LEADERBOARD
+    # ==================================================
+    def open_leaderboard(self):
+        subjects = self.model.get_subjects()
+        registered = self.registered
 
-        completed = sum(1 for s in student['total_subjects'] for l in s['lessons'] if l.get("attempts"))
-        total = sum(len(s['lessons']) for s in student['total_subjects'])
-        percent = (completed / total) * 100 if total > 0 else 0
-
-        progress_bar = ttk.Progressbar(scrollable_frame, orient="horizontal", length=700, mode="determinate")
-        progress_bar["value"] = percent
-        progress_bar.grid(row=3, column=0, columnspan=2, pady=(5, 0))
-        tk.Label(scrollable_frame, text=f"{percent:.0f}% Taken",
-                 font=("Comic Sans MS", 16, "bold"), fg="green", bg="#FFF9E3").grid(row=4, column=0, columnspan=2)
-
-        row = 5
-        for subject in student['total_subjects']:
-            frame = tk.Frame(scrollable_frame, bg="#E0F7FA", bd=2, relief="ridge")
-            frame.grid(row=row, column=0, columnspan=2, padx=20, pady=2, sticky="w")
-
-            tk.Label(frame, text=f"📘 {subject['subject_name']}",
-                     font=("Comic Sans MS", 16, "bold"), bg="#E0F7FA").grid(row=0, column=0, sticky="w", padx=10)
-            tk.Button(frame, text="View", font=("Comic Sans MS", 12),
-                      bg="#ADD8E6", command=lambda s=subject: self._show_subject_detail_ui(s)).grid(row=0, column=1, sticky="e", padx=5)
-
-            subject_total = len(subject['lessons'])
-            subject_completed = sum(1 for l in subject['lessons'] if l.get("attempts"))
-            subject_percent = (subject_completed / subject_total) * 100 if subject_total > 0 else 0
-
-            progress = ttk.Progressbar(frame, orient="horizontal", length=500, mode="determinate")
-            progress["value"] = subject_percent
-            progress.grid(row=1, column=0, columnspan=2, padx=10, sticky="w")
-            tk.Label(frame, text=f"{subject_percent:.0f}% Complete",
-                     font=("Comic Sans MS", 12, "bold"), bg="#E0F7FA", fg="blue").grid(row=2, column=0, columnspan=2, sticky="w")
-            row += 1
-
-    def _show_leaderboard_ui(self, subjects):
-        leaderboard_window = Toplevel()
-        leaderboard_window.title("🏆 Leaderboards")
+        leaderboard_window = tk.Toplevel(self.view.root)
+        leaderboard_window.title("🏆 AlphaBot Leaderboard 🏆")
         leaderboard_window.attributes('-fullscreen', True)
-        leaderboard_window.configure(bg="#FFF9E3")
+        leaderboard_window.config(bg="#E8F3D6")
 
-        tk.Button(leaderboard_window, text="🔙 Back", command=leaderboard_window.destroy,
-                  font=("Comic Sans MS", 16, "bold"), bg="#FFB6B6", fg="black", padx=20, pady=10).pack(anchor="ne", padx=15, pady=15)
+        content_frame = tk.Frame(leaderboard_window, bg="#E8F3D6")
+        content_frame.pack(expand=True)
+        pastel_colors = ["#FFD1DC", "#B5EAD7", "#FFDAC1", "#C7CEEA", "#FFF5BA"]
 
-        tk.Label(leaderboard_window, text="📊 Subject Leaderboards",
-                 font=("Comic Sans MS", 28, "bold"), bg="#FFF9E3").pack(pady=20)
+        def show_subject_leaderboard(subject):
+            for widget in content_frame.winfo_children():
+                widget.destroy()
 
-        canvas = tk.Canvas(leaderboard_window, bg="#FFF9E3", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(leaderboard_window, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg="#FFF9E3")
+            tk.Label(content_frame, text=f"🏅 Top Students - {subject} 🏅",
+                     font=("Comic Sans MS", 28, "bold"), bg="#E8F3D6").pack(pady=20)
 
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+            leaderboard_data = self.model.get_leaderboard_data(registered, subject)
 
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+            if not leaderboard_data:
+                tk.Label(content_frame, text="No students have data for this subject yet 📊",
+                         font=("Comic Sans MS", 16), bg="#E8F3D6").pack(pady=20)
+                return
 
-        max_cols = 4
-        row_index, col_index = 0, 0
+            style = ttk.Style()
+            style.configure("Treeview.Heading", font=("Comic Sans MS", 18, "bold"))
+            style.configure("Treeview", font=("Comic Sans MS", 20, "bold"), rowheight=40)
 
-        for subject_name, data in subjects.items():
-            data.sort(key=lambda x: x[1], reverse=True)
+            tree = ttk.Treeview(content_frame, columns=("Name", "Score"), show="headings", height=12)
+            tree.heading("Name", text="👧 Student Name")
+            tree.heading("Score", text="⭐ Score (%)")
+            tree.column("Name", width=500)
+            tree.column("Score", width=200, anchor="center")
+            tree.pack(pady=10, fill="both", expand=True)
 
-            subject_frame = tk.Frame(scrollable_frame, bg="#FFF9E3", bd=2, relief="groove", padx=10, pady=10)
-            subject_frame.grid(row=row_index, column=col_index, padx=15, pady=15, sticky="n")
+            for rank, entry in enumerate(leaderboard_data, start=1):
+                medal = ["🥇", "🥈", "🥉"][rank - 1] if rank <= 3 else f" {rank}. "
+                display_name = f"{medal} {entry['studentname']}"
+                tree.insert("", "end", values=(display_name, f"{entry['score']}%"))
 
-            tk.Label(subject_frame, text=f"🏅 {subject_name} Leaderboard",
-                     font=("Comic Sans MS", 16, "bold"), bg="#FFF9E3", fg="#006FB9").pack(pady=5)
+            tk.Button(content_frame, text="⬅ Back to Subjects",
+                      command=show_subject_buttons,
+                      bg="#A3D8F4", font=("Comic Sans MS", 16, "bold"),
+                      relief="raised", width=18, height=2).pack(pady=20)
 
-            previous_score = None
-            for rank, (student, score) in enumerate(data, start=1):
-                label_text = f"{rank}. {student} - {score:.1f}%" if previous_score != score else f"{rank}. {student} - {score:.1f}% (Tied)"
+        def show_subject_buttons():
+            for widget in content_frame.winfo_children():
+                widget.destroy()
 
-                entry_frame = tk.Frame(subject_frame, bg="#FFF9E3")
-                entry_frame.pack(anchor="w", pady=2)
+            btn_frame = tk.Frame(content_frame, bg="#E8F3D6")
+            btn_frame.pack(pady=40)
 
-                tk.Label(entry_frame, text=label_text, font=("Comic Sans MS", 12), bg="#FFF9E3").pack(anchor="w")
+            for i, subject in enumerate(subjects):
+                color = pastel_colors[i % len(pastel_colors)]
+                tk.Button(btn_frame, text=f"📘 {subject}",
+                          command=lambda s=subject: show_subject_leaderboard(s),
+                          width=20, height=3, bg=color,
+                          font=("Comic Sans MS", 16, "bold")).grid(row=i // 3, column=i % 3, padx=25, pady=25)
 
-                score_bar = ttk.Progressbar(entry_frame, orient="horizontal", length=200, mode="determinate")
-                score_bar["value"] = score
-                score_bar.pack(anchor="w", pady=(0, 2))
+            tk.Button(content_frame, text="❌ Close Window",
+                      command=leaderboard_window.destroy,
+                      bg="#F77F00", fg="white",
+                      font=("Comic Sans MS", 16, "bold"),
+                      relief="raised", width=15, height=2).pack(pady=10)
 
-                previous_score = score
-
-            col_index += 1
-            if col_index >= max_cols:
-                col_index = 0
-                row_index += 1
+        show_subject_buttons()
