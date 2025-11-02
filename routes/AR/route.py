@@ -13,32 +13,6 @@ class ARMouseController:
     def __init__(self):
         self.running = False
         self.thread = None
-    
-    def _find_available_camera(self, max_cameras=5):
-        """
-        Dynamically searches for an available camera.
-        Returns the index of the first working camera, or None if none found.
-        """
-        print("🔍 Searching for available cameras...")
-        
-        for camera_index in range(max_cameras):
-            cap = cv2.VideoCapture(camera_index)
-            
-            if cap.isOpened():
-                # Try to read a frame to confirm it's actually working
-                ret, frame = cap.read()
-                cap.release()
-                
-                if ret and frame is not None:
-                    print(f"✅ Found working camera at index {camera_index}")
-                    return camera_index
-                else:
-                    print(f"⚠️ Camera {camera_index} opened but couldn't read frame")
-            else:
-                print(f"❌ No camera at index {camera_index}")
-        
-        print("❌ No available cameras found")
-        return None
         
     def start(self):
         if self.running:
@@ -59,7 +33,6 @@ class ARMouseController:
         print("🛑 Stopping AR tracking...")
         self.running = False
         
-        # Give the thread a bit of time to close camera cleanly
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2)
         
@@ -67,16 +40,8 @@ class ARMouseController:
         return {"status": "stopped"}
     
     def _run_tracking(self):
-        # Find available camera dynamically
-        camera_index = self._find_available_camera()
-        
-        if camera_index is None:
-            print("❌ ERROR: No camera available. AR tracking cannot start.")
-            self.running = False
-            return
-        
         # Initialize video capture and hand detection
-        cap = cv2.VideoCapture(camera_index)
+        cap = cv2.VideoCapture(0)  # Use index 0 for primary/built-in camera
         hand_detector = mp.solutions.hands.Hands(
             min_detection_confidence=0.7, 
             min_tracking_confidence=0.7, 
@@ -84,29 +49,35 @@ class ARMouseController:
         )
         screen_width, screen_height = pyautogui.size()
 
-        # ----- RESPONSIVE TRACKING PARAMETERS -----
-        alpha = 0.7
+        # ----- CURSOR SMOOTHING -----
+        alpha = 0.8  # Increased for more responsiveness
         prev_x, prev_y = screen_width // 2, screen_height // 2
 
-        # ----- IMPROVED CLICK PARAMETERS -----
-        click_cooldown = 0.4
+        # ----- IMPROVED CLICK DETECTION -----
+        click_cooldown = 0.5  # Increased cooldown
         last_click_time = 0
-        click_threshold = 30
-        finger_distance_history = deque(maxlen=5)
-        click_trigger_frames = 1
-        click_frames_counter = 0
-        is_clicking = False
-        click_released = True
-        min_release_distance = 30
-
-        # ----- RESPONSIVE MOTION TRACKING -----
-        motion_buffer_size = 3
+        click_threshold = 35  # Stricter threshold
+        release_threshold = 50  # Clear separation for release
+        
+        # State machine for clicks
+        IDLE = 0
+        PINCHING = 1
+        CLICKED = 2
+        click_state = IDLE
+        
+        # History tracking
+        finger_distance_history = deque(maxlen=7)
+        stable_pinch_frames = 0
+        required_stable_frames = 3  # Need consistent pinch before click
+        
+        # ----- CURSOR MOTION TRACKING -----
+        motion_buffer_size = 2  # Reduced buffer for faster response
         x_buffer = deque([prev_x] * motion_buffer_size, maxlen=motion_buffer_size)
         y_buffer = deque([prev_y] * motion_buffer_size, maxlen=motion_buffer_size)
-        buffer_weights = np.array([0.2, 0.3, 0.5])
+        buffer_weights = np.array([0.3, 0.7])  # Weight recent positions more
         buffer_weights = buffer_weights / np.sum(buffer_weights)
 
-        # Disable PyAutoGUI delay
+        # PyAutoGUI settings
         pyautogui.PAUSE = 0
         pyautogui.FAILSAFE = False
 
@@ -137,53 +108,74 @@ class ARMouseController:
                     landmarks = hand.landmark
 
                     if len(landmarks) >= 21:
-                        # ----- POINTER WITH THUMB -----
-                        thumb_landmark = landmarks[4]
-                        x = int(thumb_landmark.x * frame_width)
-                        y = int(thumb_landmark.y * frame_height)
+                        # ----- CURSOR CONTROL: THUMB TIP -----
+                        thumb_tip = landmarks[4]
+                        x = int(thumb_tip.x * frame_width)
+                        y = int(thumb_tip.y * frame_height)
 
-                        index_x = np.interp(x, [100, frame_width - 100], [0, screen_width])
-                        index_y = np.interp(y, [100, frame_height - 100], [0, screen_height])
+                        cursor_x = np.interp(x, [50, frame_width - 50], [0, screen_width])
+                        cursor_y = np.interp(y, [50, frame_height - 50], [0, screen_height])
 
-                        # ----- CLICK WITH INDEX + MIDDLE -----
+                        # ----- CLICK DETECTION: INDEX + MIDDLE PINCH -----
                         index_tip = landmarks[8]
                         middle_tip = landmarks[12]
+                        index_pip = landmarks[6]
+                        middle_pip = landmarks[10]
+                        
                         index_tip_x = int(index_tip.x * frame_width)
                         index_tip_y = int(index_tip.y * frame_height)
                         middle_x = int(middle_tip.x * frame_width)
                         middle_y = int(middle_tip.y * frame_height)
+                        
+                        index_pip_y = int(index_pip.y * frame_height)
+                        middle_pip_y = int(middle_pip.y * frame_height)
 
-                        index_pip_y = int(landmarks[6].y * frame_height)
-                        middle_pip_y = int(landmarks[10].y * frame_height)
-
-                        finger_distance = np.sqrt((index_tip_x - middle_x) ** 2 + (index_tip_y - middle_y) ** 2)
+                        # Calculate distance between index and middle fingertips
+                        finger_distance = np.sqrt(
+                            (index_tip_x - middle_x) ** 2 + 
+                            (index_tip_y - middle_y) ** 2
+                        )
+                        
                         finger_distance_history.append(finger_distance)
                         avg_distance = sum(finger_distance_history) / len(finger_distance_history)
 
+                        # Check if fingers are extended (not folded down)
                         fingers_extended = (index_tip_y < index_pip_y) and (middle_y < middle_pip_y)
 
-                        if avg_distance < click_threshold and fingers_extended and click_released:
-                            click_frames_counter += 1
-
-                            if click_frames_counter >= click_trigger_frames and not is_clicking:
+                        # ----- STATE MACHINE FOR RELIABLE CLICKS -----
+                        if click_state == IDLE:
+                            # Looking for a pinch gesture
+                            if avg_distance < click_threshold and fingers_extended:
+                                stable_pinch_frames += 1
+                                if stable_pinch_frames >= required_stable_frames:
+                                    click_state = PINCHING
+                            else:
+                                stable_pinch_frames = 0
+                                
+                        elif click_state == PINCHING:
+                            # Confirm pinch is stable, then click
+                            if avg_distance < click_threshold and fingers_extended:
                                 if time.time() - last_click_time > click_cooldown:
-                                    print('Clicked')
+                                    print('✓ Click')
                                     pyautogui.click()
                                     last_click_time = time.time()
-                                    is_clicking = True
-                                    click_released = False
-                        elif avg_distance > min_release_distance:
-                            click_frames_counter = 0
-                            is_clicking = False
-                            click_released = True
-                        else:
-                            click_frames_counter = 0
-                            is_clicking = False
+                                    click_state = CLICKED
+                                    stable_pinch_frames = 0
+                            else:
+                                # False alarm, reset
+                                click_state = IDLE
+                                stable_pinch_frames = 0
+                                
+                        elif click_state == CLICKED:
+                            # Wait for fingers to separate before allowing next click
+                            if avg_distance > release_threshold:
+                                click_state = IDLE
+                                stable_pinch_frames = 0
 
-                        # ----- CURSOR TRACKING -----
-                        if index_x is not None and index_y is not None:
-                            x_buffer.append(index_x)
-                            y_buffer.append(index_y)
+                        # ----- SMOOTH CURSOR MOVEMENT -----
+                        if cursor_x is not None and cursor_y is not None:
+                            x_buffer.append(cursor_x)
+                            y_buffer.append(cursor_y)
 
                             x_arr = np.array(x_buffer)
                             y_arr = np.array(y_buffer)
@@ -202,6 +194,10 @@ class ARMouseController:
                                 prev_x, prev_y = smoothed_x, smoothed_y
                             except:
                                 pass
+                else:
+                    # No hand detected, reset click state
+                    click_state = IDLE
+                    stable_pinch_frames = 0
 
         finally:
             cap.release()
@@ -213,8 +209,6 @@ ar_controller = ARMouseController()
 @AR_bp.route("/", methods=["GET", "POST"])
 def run_AR():
     print("Hello AR Route")
-    
-    # Start the AR tracking automatically when this route is called
     result = ar_controller.start()
     
     return jsonify({
