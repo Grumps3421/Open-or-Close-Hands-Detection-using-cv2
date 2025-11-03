@@ -6,7 +6,6 @@ class BraceletModelRegister:
         self.client = MongoClient(db_url)
         self.db = self.client[db_name]
         self.main_collection = self.db["bracelet_registrations"]
-        self.present_collection = self.db["Present_db"]  # ✅ NEW: Reference to Present_db
 
         # ✅ Fixed subjects and question sets
         self.fixed_questions = {
@@ -154,20 +153,114 @@ class BraceletModelRegister:
         return True, f"✅ Registered {student_name} (reset quiz if retake)."
 
     # -----------------------------------------------------
-    # ✅ FIXED: Update score ONLY for PRESENT students
+    # ✅ NEW: Mark question as "No answer" for ALL students
+    # -----------------------------------------------------
+    def mark_no_answer(self, subject):
+        """
+        When no one answers the question, all students get:
+        - student_answer = "No answer"
+        - score = 0
+        """
+        print(f"\n⏰ NO ONE ANSWERED - Marking all students with score 0")
+        print(f"   Subject: {subject}")
+
+        if not subject:
+            return "❌ No subject provided."
+
+        # ✅ Get ALL registered students
+        all_registrations = list(self.main_collection.find({}))
+        if not all_registrations:
+            return "❌ No students registered in the system."
+
+        print(f"\n📋 Found {len(all_registrations)} registered students")
+
+        # ✅ Find the question index (use first student as reference)
+        first_student = all_registrations[0]["studentname"]
+        first_collection = self.db[f"{first_student}_db"]
+        first_doc = first_collection.find_one({"student_name": first_student})
+
+        if not first_doc:
+            return f"❌ No record found for {first_student}."
+
+        # Find the first unanswered question in the subject
+        question_index = None
+        question_text = None
+
+        for i, q in enumerate(first_doc["questions"]):
+            if q["subject"].lower() == subject.lower() and q["student_answer"] is None:
+                question_index = i
+                question_text = q["question"]
+                print(f"📝 Target Question #{i+1}: {question_text[:50]}...")
+                break
+
+        if question_index is None:
+            print(f"⚠️ No unanswered questions found for subject: {subject}")
+            return f"⚠️ All questions answered for {subject} or no questions found"
+
+        # ✅ UPDATE ALL STUDENTS WITH SCORE 0
+        print(f"\n🔄 Marking all {len(all_registrations)} students with 'No answer' and score 0...")
+        
+        for reg in all_registrations:
+            current_student = reg["studentname"]
+            current_collection = self.db[f"{current_student}_db"]
+            current_doc = current_collection.find_one({"student_name": current_student})
+
+            if not current_doc:
+                print(f"⚠️ Skipping {current_student} - no data found")
+                continue
+
+            # Check if this question exists for this student
+            if question_index >= len(current_doc["questions"]):
+                print(f"⚠️ Skipping {current_student} - question index out of range")
+                continue
+
+            # Get the question at the same index
+            question = current_doc["questions"][question_index]
+
+            # Skip if already answered
+            if question["student_answer"] is not None:
+                print(f"⏭️ Skipping {current_student} - already answered this question")
+                continue
+
+            # ✅ Mark as "No answer" with score 0
+            question["student_answer"] = "No answer"
+            question["score"] = 0
+            print(f"❌ {current_student}: student_answer='No answer', score=0")
+
+            # Calculate new total score
+            new_total_score = sum(q["score"] for q in current_doc["questions"])
+
+            # Update the database
+            current_collection.update_one(
+                {"student_name": current_student},
+                {
+                    "$set": {
+                        "questions": current_doc["questions"],
+                        "total_score": new_total_score,
+                        "attempt_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                }
+            )
+
+            print(f"💾 {current_student} - Total Score: {new_total_score}")
+
+        print(f"\n✅ All students marked with 'No answer' and score 0!")
+        return f"⏰ No one answered. All students received 0 points and marked as 'No answer'."
+
+    # -----------------------------------------------------
+    # ✅ Update score for ALL students (winner gets 1, others get 0)
     # -----------------------------------------------------
     def update_student_score(self, result_data):
         """
-        Update scores ONLY for students in Present_db:
-        - The student who answered correctly gets score = 1
-        - Other PRESENT students get score = 0 for that question
-        - Students NOT in Present_db are completely ignored
+        Update scores for ALL registered students:
+        - The student who answered correctly gets score = 1, student_answer = their answer
+        - All other students get score = 0, student_answer = "No answer"
         """
-        # ✅ Get data from YOLO detection
-        bracelet_id = result_data.get("bracelet_id", "").strip()
-        student_name = result_data.get("student name", "").strip()
-        hand_status = result_data.get("hand_status", "").capitalize()
-        subject = result_data.get("subject", "").strip()
+        # ✅ Get data from YOLO detection (handle None values)
+        bracelet_id = (result_data.get("bracelet_id") or "").strip()
+        student_name = (result_data.get("student name") or "").strip()
+        hand_status = (result_data.get("hand_status") or "").capitalize()
+        subject = (result_data.get("subject") or "").strip()
 
         print(f"\n🔍 DEBUG - Received data:")
         print(f"   Student Name: {student_name}")
@@ -198,20 +291,12 @@ class BraceletModelRegister:
         
         print(f"✅ Verified: {student_name} with bracelet {bracelet_id}")
 
-        # ✅ CRITICAL FIX: Get ONLY students who are PRESENT (not all registered)
-        present_students = list(self.present_collection.find({}))
-        
-        if not present_students:
-            return "❌ No students marked as present in Present_db."
+        # ✅ Get ALL registered students
+        all_registrations = list(self.main_collection.find({}))
+        if not all_registrations:
+            return "❌ No students registered in the system."
 
-        print(f"\n📋 Found {len(present_students)} PRESENT students")
-
-        # ✅ Check if the detected student is actually present
-        present_student_names = [p.get("studentname", "").lower() for p in present_students]
-        
-        if student_name.lower() not in present_student_names:
-            print(f"⚠️ Student '{student_name}' is registered but NOT marked as present!")
-            return f"❌ {student_name} is not marked as present. Only present students can answer."
+        print(f"\n📋 Found {len(all_registrations)} registered students")
 
         # ✅ Find the question index to update (first unanswered question in subject)
         winner_collection = self.db[f"{student_name}_db"]
@@ -249,15 +334,11 @@ class BraceletModelRegister:
         print(f"   Correct: {is_correct}")
         print(f"   Score: {winner_score}")
 
-        # ✅ UPDATE ONLY PRESENT STUDENTS
-        print(f"\n🔄 Updating only {len(present_students)} PRESENT students...")
+        # ✅ UPDATE ALL STUDENTS
+        print(f"\n🔄 Updating all {len(all_registrations)} students...")
         
-        for present_student in present_students:
-            current_student = present_student.get("studentname")
-            
-            if not current_student:
-                continue
-                
+        for reg in all_registrations:
+            current_student = reg["studentname"]
             current_collection = self.db[f"{current_student}_db"]
             current_doc = current_collection.find_one({"student_name": current_student})
 
@@ -279,16 +360,16 @@ class BraceletModelRegister:
                 continue
 
             # Determine score: only the winner who answered correctly gets 1, everyone else gets 0
-            if current_student.lower() == student_name.lower():
+            if current_student == student_name:
                 # This is the student who answered
                 question["student_answer"] = hand_status
                 question["score"] = winner_score
-                print(f"✅ {current_student} (WINNER): Answer={hand_status}, Score={winner_score}")
+                print(f"✅ {current_student} (ANSWERED): student_answer='{hand_status}', score={winner_score}")
             else:
-                # This is another PRESENT student who didn't answer
+                # This is another student who didn't answer
                 question["student_answer"] = "No answer"
                 question["score"] = 0
-                print(f"❌ {current_student}: No answer, Score=0")
+                print(f"❌ {current_student}: student_answer='No answer', score=0")
 
             # Calculate new total score
             new_total_score = sum(q["score"] for q in current_doc["questions"])
@@ -305,7 +386,7 @@ class BraceletModelRegister:
                 }
             )
 
-            print(f"💾 {current_student} - New Total Score: {new_total_score}")
+            print(f"💾 {current_student} - Total Score: {new_total_score}")
 
         # ✅ Check progress for the subject
         subject_questions = [q for q in winner_doc["questions"] if q["subject"].lower() == subject.lower()]
@@ -314,12 +395,12 @@ class BraceletModelRegister:
         
         subject_done = answered_count == total_count
 
-        print(f"\n✅ Update completed for all PRESENT students!")
+        print(f"\n✅ Update completed for all students!")
         
         if subject_done:
-            return f"🏁 Question answered! {student_name} scored {winner_score} point. Subject {subject} progress: {answered_count}/{total_count} completed."
+            return f"🏁 Question answered! {student_name} scored {winner_score} point. Subject {subject} completed ({answered_count}/{total_count})."
         else:
-            return f"✅ Question answered! {student_name} scored {winner_score} point. Subject {subject} progress: {answered_count}/{total_count}."
+            return f"✅ Question answered! {student_name} scored {winner_score} point. Progress: {answered_count}/{total_count}."
 
     # -----------------------------------------------------
     # ✅ Utilities
@@ -366,13 +447,6 @@ class BraceletModelRegister:
             print(f"   🔗 Bracelet: {bracelet_id}")
             print(f"   📅 Registered: {date_reg}")
             
-            # Check if they're present
-            is_present = self.present_collection.find_one({"studentname": student_name})
-            if is_present:
-                print(f"   ✅ Status: PRESENT")
-            else:
-                print(f"   ❌ Status: NOT PRESENT (will not record answers)")
-            
             # Check if their collection exists
             collection_name = f"{student_name}_db"
             if collection_name in self.db.list_collection_names():
@@ -381,7 +455,7 @@ class BraceletModelRegister:
                     total_q = len(student_doc.get("questions", []))
                     answered = sum(1 for q in student_doc["questions"] if q["student_answer"] is not None)
                     score = student_doc.get("total_score", 0)
-                    print(f"   📊 Progress: {answered}/{total_q} questions answered")
+                    print(f"   ✅ Progress: {answered}/{total_q} questions answered")
                     print(f"   🏆 Score: {score}")
                 else:
                     print(f"   ⚠️ Collection exists but no data found")

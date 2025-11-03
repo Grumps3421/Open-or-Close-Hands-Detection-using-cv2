@@ -79,23 +79,43 @@ def run_yolo_detection_open():
         except Exception:
             pass
 
+        # ✅ FIX: Check if detection failed (no bracelet or no hand detected)
+        if student_name == "No bracelet detected" or hand_status == "No hand detected" or not student_name or not hand_status:
+            print("⏰ TIMEOUT: No valid student detected (open-hand)")
+            return {
+                "status": "timeout",
+                "student name": None,
+                "bracelet_id": None,
+                "hand_status": None,
+                "message": "No one answered"
+            }
+
+        # Try to get bracelet ID
         bracelet_id = get_bracelet_id_by_student(student_name)
+        
+        # ✅ If no bracelet ID found, treat as timeout
+        if not bracelet_id:
+            print(f"⏰ TIMEOUT: Student '{student_name}' detected but no bracelet registered (open-hand)")
+            return {
+                "status": "timeout",
+                "student name": None,
+                "bracelet_id": None,
+                "hand_status": None,
+                "message": "No registered student answered"
+            }
+
         result_data = {"student name": student_name, "bracelet_id": bracelet_id, "hand_status": hand_status}
 
-        if not student_name or not hand_status:
-            print("⚠️ No detection found (open-hand).")
-            result_data["status"] = "failed"
-        else:
-            print(f"✅ Detected: {student_name} | Hand: {hand_status} (open-hand)")
-            result_data["status"] = "success"
-            last_student_name = student_name
-            last_detection_time = time.time()
+        print(f"✅ Detected: {student_name} | Hand: {hand_status} (open-hand)")
+        result_data["status"] = "success"
+        last_student_name = student_name
+        last_detection_time = time.time()
 
-            def cooldown_notifier():
-                time.sleep(COOLDOWN)
-                print("✅ Cooldown finished — ready for next OPEN-hand detection!")
+        def cooldown_notifier():
+            time.sleep(COOLDOWN)
+            print("✅ Cooldown finished — ready for next OPEN-hand detection!")
 
-            threading.Thread(target=cooldown_notifier, daemon=True).start()
+        threading.Thread(target=cooldown_notifier, daemon=True).start()
 
         print(f"🖐️ Final YOLO OPEN output → {result_data}")
         return result_data
@@ -139,23 +159,43 @@ def run_yolo_detection_close():
         except Exception:
             pass
 
+        # ✅ FIX: Check if detection failed (no bracelet or no hand detected)
+        if student_name == "No bracelet detected" or hand_status == "No hand detected" or not student_name or not hand_status:
+            print("⏰ TIMEOUT: No valid student detected (close-hand)")
+            return {
+                "status": "timeout",
+                "student name": None,
+                "bracelet_id": None,
+                "hand_status": None,
+                "message": "No one answered"
+            }
+
+        # Try to get bracelet ID
         bracelet_id = get_bracelet_id_by_student(student_name)
+        
+        # ✅ If no bracelet ID found, treat as timeout
+        if not bracelet_id:
+            print(f"⏰ TIMEOUT: Student '{student_name}' detected but no bracelet registered (close-hand)")
+            return {
+                "status": "timeout",
+                "student name": None,
+                "bracelet_id": None,
+                "hand_status": None,
+                "message": "No registered student answered"
+            }
+
         result_data = {"student name": student_name, "bracelet_id": bracelet_id, "hand_status": hand_status}
 
-        if not student_name or not hand_status:
-            print("⚠️ No detection found (close-hand).")
-            result_data["status"] = "failed"
-        else:
-            print(f"✅ Detected: {student_name} | Hand: {hand_status} (close-hand)")
-            result_data["status"] = "success"
-            last_student_name = student_name
-            last_detection_time = time.time()
+        print(f"✅ Detected: {student_name} | Hand: {hand_status} (close-hand)")
+        result_data["status"] = "success"
+        last_student_name = student_name
+        last_detection_time = time.time()
 
-            def cooldown_notifier():
-                time.sleep(COOLDOWN)
-                print("✅ Cooldown finished — ready for next CLOSE-hand detection!")
+        def cooldown_notifier():
+            time.sleep(COOLDOWN)
+            print("✅ Cooldown finished — ready for next CLOSE-hand detection!")
 
-            threading.Thread(target=cooldown_notifier, daemon=True).start()
+        threading.Thread(target=cooldown_notifier, daemon=True).start()
 
         print(f"✊ Final YOLO CLOSE output → {result_data}")
         return result_data

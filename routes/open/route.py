@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from checking_answer import run_yolo_detection_open  # ✅ open hand function
+from checking_answer import run_yolo_detection_open
 from register_students_MVC.model import BraceletModelRegister
 from routes.AR.route import ar_controller
 import threading
@@ -24,7 +24,7 @@ def detect_open():
             return jsonify({
                 "status": "error",
                 "message": "⚠️ Detection already in progress. Please wait..."
-            }), 429  # 429 = Too Many Requests
+            }), 429
         detection_running = True
 
     try:
@@ -47,7 +47,7 @@ def detect_open():
         print("🧠 Stopping AR before YOLO detection...")
         stop_result = ar_controller.stop()
         print(f"🛑 AR stop result: {stop_result['status']}")
-        time.sleep(1)  # give time to release the camera properly
+        time.sleep(1)
 
         # ✅ Run YOLO detection (OPEN)
         print("🎥 Running YOLO detection for /open ...")
@@ -58,15 +58,29 @@ def detect_open():
         start_result = ar_controller.start()
         print(f"✅ AR start result: {start_result['status']}")
 
-        # ✅ Handle failed detection
+        # ✅ Handle TIMEOUT - no one answered
+        if result.get("status") == "timeout":
+            print(f"⏰ TIMEOUT DETECTED - Marking all PRESENT students with 'No answer' and score 0")
+            update_message = bracelet_model.mark_no_answer(subject)
+            
+            return jsonify({
+                "status": "timeout",
+                "message": update_message,
+                "subject": subject,
+                "lesson": lesson,
+                "allow_next": True
+            }), 200
+
+        # ✅ Handle failed detection (not timeout, just failed)
         if result.get("status") != "success":
             return jsonify({
                 "status": "error",
                 "message": "❌ No hand or student detected (open).",
-                "details": result
+                "details": result,
+                "allow_next": False
             }), 400
 
-        # ✅ Update DB
+        # ✅ Update DB - someone answered
         result["subject"] = subject
         result["lesson"] = lesson
         update_message = bracelet_model.update_student_score(result)
@@ -80,11 +94,11 @@ def detect_open():
             "hand_status": result.get("hand_status"),
             "subject": subject,
             "lesson": lesson,
-            "update_message": update_message
+            "update_message": update_message,
+            "allow_next": True
         }), 200
 
     finally:
-        # ⏳ Cooldown bago payagan ulit
         time.sleep(3)
         detection_running = False
         print("✅ Detection finished — system unlocked.")
