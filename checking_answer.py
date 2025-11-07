@@ -3,10 +3,15 @@ import threading
 import os
 import cv2
 from pymongo import MongoClient
+from sound_player_MVC.sound_controller import SoundController
 from alphabotFunction.YoLo.my_model_final.yolo_detect import (
     detect_student_open_hand,
     detect_student_close_hand,
 )
+
+# ==========================================
+# 🧭 SOUND CONTROLLER INITIALIZATION
+sound_controller = SoundController()
 
 # === Constants ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -45,9 +50,6 @@ def get_bracelet_id_by_student(student_name: str):
 # 🖐️ OPEN HAND DETECTION
 # ==========================================
 def run_yolo_detection_open():
-    """
-    Runs YOLO + MediaPipe detection for OPEN hand gesture.
-    """
     global last_detection_time, last_student_name
 
     remaining_cooldown = COOLDOWN - (time.time() - last_detection_time)
@@ -79,9 +81,10 @@ def run_yolo_detection_open():
         except Exception:
             pass
 
-        # ✅ FIX: Check if detection failed (no bracelet or no hand detected)
+        # 🕒 Timeout / no detection
         if student_name == "No bracelet detected" or hand_status == "No hand detected" or not student_name or not hand_status:
             print("⏰ TIMEOUT: No valid student detected (open-hand)")
+            sound_controller.play_student_sound("NoAnswer")
             return {
                 "status": "timeout",
                 "student name": None,
@@ -90,12 +93,11 @@ def run_yolo_detection_open():
                 "message": "No one answered"
             }
 
-        # Try to get bracelet ID
+        # Get bracelet ID
         bracelet_id = get_bracelet_id_by_student(student_name)
-        
-        # ✅ If no bracelet ID found, treat as timeout
         if not bracelet_id:
             print(f"⏰ TIMEOUT: Student '{student_name}' detected but no bracelet registered (open-hand)")
+            sound_controller.play_student_sound("NoAnswer")
             return {
                 "status": "timeout",
                 "student name": None,
@@ -105,17 +107,13 @@ def run_yolo_detection_open():
             }
 
         result_data = {"student name": student_name, "bracelet_id": bracelet_id, "hand_status": hand_status}
+        result_data["status"] = "success"
 
         print(f"✅ Detected: {student_name} | Hand: {hand_status} (open-hand)")
-        result_data["status"] = "success"
         last_student_name = student_name
         last_detection_time = time.time()
 
-        def cooldown_notifier():
-            time.sleep(COOLDOWN)
-            print("✅ Cooldown finished — ready for next OPEN-hand detection!")
-
-        threading.Thread(target=cooldown_notifier, daemon=True).start()
+        threading.Thread(target=lambda: (time.sleep(COOLDOWN), print("✅ Cooldown finished — ready for next OPEN-hand detection!")), daemon=True).start()
 
         print(f"🖐️ Final YOLO OPEN output → {result_data}")
         return result_data
@@ -125,9 +123,6 @@ def run_yolo_detection_open():
 # ✊ CLOSE HAND DETECTION
 # ==========================================
 def run_yolo_detection_close():
-    """
-    Runs YOLO + MediaPipe detection for CLOSE hand gesture.
-    """
     global last_detection_time, last_student_name
 
     remaining_cooldown = COOLDOWN - (time.time() - last_detection_time)
@@ -159,9 +154,10 @@ def run_yolo_detection_close():
         except Exception:
             pass
 
-        # ✅ FIX: Check if detection failed (no bracelet or no hand detected)
+        # 🕒 Timeout / no detection
         if student_name == "No bracelet detected" or hand_status == "No hand detected" or not student_name or not hand_status:
             print("⏰ TIMEOUT: No valid student detected (close-hand)")
+            sound_controller.play_student_sound("NoAnswer")
             return {
                 "status": "timeout",
                 "student name": None,
@@ -170,12 +166,11 @@ def run_yolo_detection_close():
                 "message": "No one answered"
             }
 
-        # Try to get bracelet ID
+        # Get bracelet ID
         bracelet_id = get_bracelet_id_by_student(student_name)
-        
-        # ✅ If no bracelet ID found, treat as timeout
         if not bracelet_id:
             print(f"⏰ TIMEOUT: Student '{student_name}' detected but no bracelet registered (close-hand)")
+            sound_controller.play_student_sound("NoAnswer")
             return {
                 "status": "timeout",
                 "student name": None,
@@ -185,17 +180,16 @@ def run_yolo_detection_close():
             }
 
         result_data = {"student name": student_name, "bracelet_id": bracelet_id, "hand_status": hand_status}
+        result_data["status"] = "success"
 
         print(f"✅ Detected: {student_name} | Hand: {hand_status} (close-hand)")
-        result_data["status"] = "success"
         last_student_name = student_name
         last_detection_time = time.time()
 
-        def cooldown_notifier():
-            time.sleep(COOLDOWN)
-            print("✅ Cooldown finished — ready for next CLOSE-hand detection!")
+        threading.Thread(target=lambda: (time.sleep(COOLDOWN), print("✅ Cooldown finished — ready for next CLOSE-hand detection!")), daemon=True).start()
 
-        threading.Thread(target=cooldown_notifier, daemon=True).start()
-
+        # ✅ Play sound for successful detection
         print(f"✊ Final YOLO CLOSE output → {result_data}")
+        sound_controller.play_student_sound(result_data["bracelet_id"])
+
         return result_data
