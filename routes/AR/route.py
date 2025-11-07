@@ -25,6 +25,7 @@ class ARMouseController:
         self.thread.start()
         return {"status": "started"}
     
+    #this is for stopping the AR
     def stop(self):
         if not self.running:
             print("⚠️ AR is not running, no need to stop.")
@@ -40,9 +41,9 @@ class ARMouseController:
         return {"status": "stopped"}
     
     def _run_tracking(self):
-        # Initialize video capture with Full HD settings
+        # Initialize video capture optimized for 1366x768 screen
         cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)  # Keep Full HD for better tracking
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
         cap.set(cv2.CAP_PROP_FPS, 60)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -56,8 +57,8 @@ class ARMouseController:
         )
         screen_width, screen_height = pyautogui.size()
 
-        # ----- RESPONSIVE TRACKING PARAMETERS -----
-        alpha = 0.7
+        # ----- RESPONSIVE TRACKING PARAMETERS (optimized for 1366x768) -----
+        alpha = 0.75  # Slightly increased for better responsiveness on smaller screen
         prev_x, prev_y = screen_width // 2, screen_height // 2
 
         # ----- ADAPTIVE CLICK PARAMETERS -----
@@ -81,11 +82,11 @@ class ARMouseController:
         hand_size_history = deque(maxlen=30)
         is_calibrated = False
 
-        # ----- RESPONSIVE MOTION TRACKING -----
-        motion_buffer_size = 3
+        # ----- RESPONSIVE MOTION TRACKING (optimized for 1366x768) -----
+        motion_buffer_size = 2  # Reduced for faster response on smaller screen
         x_buffer = deque([prev_x] * motion_buffer_size, maxlen=motion_buffer_size)
         y_buffer = deque([prev_y] * motion_buffer_size, maxlen=motion_buffer_size)
-        buffer_weights = np.array([0.2, 0.3, 0.5])
+        buffer_weights = np.array([0.3, 0.7])  # More weight on recent position
         buffer_weights = buffer_weights / np.sum(buffer_weights)
 
         # PyAutoGUI settings
@@ -137,13 +138,14 @@ class ARMouseController:
                             is_calibrated = True
                             print(f"✓ Calibrated - Click: {click_threshold:.1f}px, Release: {min_release_distance:.1f}px")
                         
-                        # ----- POINTER WITH THUMB (for tracking cursor) -----
+                        # ----- POINTER WITH THUMB (optimized mapping for 1366x768) -----
                         thumb_landmark = landmarks[4]
                         thumb_x = int(thumb_landmark.x * frame_width)
                         thumb_y = int(thumb_landmark.y * frame_height)
 
-                        cursor_x = np.interp(thumb_x, [100, frame_width - 100], [0, screen_width])
-                        cursor_y = np.interp(thumb_y, [100, frame_height - 100], [0, screen_height])
+                        # Adjusted dead zones for better edge access on 1366x768
+                        cursor_x = np.interp(thumb_x, [80, frame_width - 80], [0, screen_width])
+                        cursor_y = np.interp(thumb_y, [80, frame_height - 80], [0, screen_height])
 
                         # ----- CLICK WITH INDEX + MIDDLE -----
                         index_tip = landmarks[8]
