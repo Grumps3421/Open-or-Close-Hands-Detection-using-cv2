@@ -116,6 +116,7 @@ def run_yolo_detection_open():
         threading.Thread(target=lambda: (time.sleep(COOLDOWN), print("✅ Cooldown finished — ready for next OPEN-hand detection!")), daemon=True).start()
 
         print(f"🖐️ Final YOLO OPEN output → {result_data}")
+        sound_controller.play_student_sound(result_data["bracelet_id"])
         return result_data
 
 
