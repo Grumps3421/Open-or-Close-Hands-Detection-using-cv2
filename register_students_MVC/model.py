@@ -402,7 +402,7 @@ class BraceletModelRegister:
         else:
             return f"✅ Question answered! {student_name} scored {winner_score} point. Progress: {answered_count}/{total_count}."
 
-    # -----------------------------------------------------
+        # -----------------------------------------------------
     # ✅ Utilities
     # -----------------------------------------------------
     def get_registered_students(self):
@@ -410,10 +410,14 @@ class BraceletModelRegister:
 
     def delete_student(self, bracelet_id):
         result = self.main_collection.delete_one({"bracelet_id": bracelet_id})
+
         if result.deleted_count > 0:
             for name in self.db.list_collection_names():
-                if name.endswith("_db"):
+                collection = self.db[name]
+
+                if collection.count_documents({"bracelet_id": bracelet_id}) > 0:
                     self.db.drop_collection(name)
+
             return True
         return False
 
@@ -423,6 +427,7 @@ class BraceletModelRegister:
             if name.endswith("_db"):
                 self.db.drop_collection(name)
         return True
+
     
     # -----------------------------------------------------
     # ✅ DEBUGGING HELPER

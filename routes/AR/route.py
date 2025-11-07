@@ -40,41 +40,52 @@ class ARMouseController:
         return {"status": "stopped"}
     
     def _run_tracking(self):
-        # Initialize video capture and hand detection
-        cap = cv2.VideoCapture(0)  # Use index 0 for primary/built-in camera
+        # Initialize video capture with Full HD settings
+        cap = cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        cap.set(cv2.CAP_PROP_FPS, 60)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        
+        # Enhanced hand detection for better accuracy
         hand_detector = mp.solutions.hands.Hands(
-            min_detection_confidence=0.7, 
-            min_tracking_confidence=0.7, 
-            max_num_hands=1
+            min_detection_confidence=0.8,
+            min_tracking_confidence=0.8,
+            max_num_hands=1,
+            model_complexity=1
         )
         screen_width, screen_height = pyautogui.size()
 
-        # ----- CURSOR SMOOTHING -----
-        alpha = 0.8  # Increased for more responsiveness
+        # ----- RESPONSIVE TRACKING PARAMETERS -----
+        alpha = 0.7
         prev_x, prev_y = screen_width // 2, screen_height // 2
 
-        # ----- IMPROVED CLICK DETECTION -----
-        click_cooldown = 0.5  # Increased cooldown
+        # ----- ADAPTIVE CLICK PARAMETERS -----
+        click_cooldown = 0.4
         last_click_time = 0
-        click_threshold = 35  # Stricter threshold
-        release_threshold = 50  # Clear separation for release
-        
-        # State machine for clicks
-        IDLE = 0
-        PINCHING = 1
-        CLICKED = 2
-        click_state = IDLE
-        
-        # History tracking
-        finger_distance_history = deque(maxlen=7)
-        stable_pinch_frames = 0
-        required_stable_frames = 3  # Need consistent pinch before click
-        
-        # ----- CURSOR MOTION TRACKING -----
-        motion_buffer_size = 2  # Reduced buffer for faster response
+
+        # Dynamic thresholds with hand size calibration
+        base_click_threshold = 28
+        base_release_threshold = 35
+        click_threshold = base_click_threshold
+        min_release_distance = base_release_threshold
+
+        # Enhanced history tracking with outlier rejection
+        finger_distance_history = deque(maxlen=8)
+        click_trigger_frames = 3
+        click_frames_counter = 0
+        is_clicking = False
+        click_released = True
+
+        # Hand size calibration
+        hand_size_history = deque(maxlen=30)
+        is_calibrated = False
+
+        # ----- RESPONSIVE MOTION TRACKING -----
+        motion_buffer_size = 3
         x_buffer = deque([prev_x] * motion_buffer_size, maxlen=motion_buffer_size)
         y_buffer = deque([prev_y] * motion_buffer_size, maxlen=motion_buffer_size)
-        buffer_weights = np.array([0.3, 0.7])  # Weight recent positions more
+        buffer_weights = np.array([0.2, 0.3, 0.5])
         buffer_weights = buffer_weights / np.sum(buffer_weights)
 
         # PyAutoGUI settings
@@ -108,71 +119,93 @@ class ARMouseController:
                     landmarks = hand.landmark
 
                     if len(landmarks) >= 21:
-                        # ----- CURSOR CONTROL: THUMB TIP -----
-                        thumb_tip = landmarks[4]
-                        x = int(thumb_tip.x * frame_width)
-                        y = int(thumb_tip.y * frame_height)
+                        # ----- HAND SIZE CALIBRATION -----
+                        wrist = landmarks[0]
+                        middle_mcp = landmarks[9]
+                        hand_size = np.sqrt(
+                            ((middle_mcp.x - wrist.x) * frame_width) ** 2 +
+                            ((middle_mcp.y - wrist.y) * frame_height) ** 2
+                        )
+                        
+                        hand_size_history.append(hand_size)
+                        
+                        if not is_calibrated and len(hand_size_history) >= 30:
+                            avg_hand_size = np.median(hand_size_history)
+                            scale_factor = avg_hand_size / 150
+                            click_threshold = base_click_threshold * scale_factor
+                            min_release_distance = base_release_threshold * scale_factor
+                            is_calibrated = True
+                            print(f"✓ Calibrated - Click: {click_threshold:.1f}px, Release: {min_release_distance:.1f}px")
+                        
+                        # ----- POINTER WITH THUMB (for tracking cursor) -----
+                        thumb_landmark = landmarks[4]
+                        thumb_x = int(thumb_landmark.x * frame_width)
+                        thumb_y = int(thumb_landmark.y * frame_height)
 
-                        cursor_x = np.interp(x, [50, frame_width - 50], [0, screen_width])
-                        cursor_y = np.interp(y, [50, frame_height - 50], [0, screen_height])
+                        cursor_x = np.interp(thumb_x, [100, frame_width - 100], [0, screen_width])
+                        cursor_y = np.interp(thumb_y, [100, frame_height - 100], [0, screen_height])
 
-                        # ----- CLICK DETECTION: INDEX + MIDDLE PINCH -----
+                        # ----- CLICK WITH INDEX + MIDDLE -----
                         index_tip = landmarks[8]
                         middle_tip = landmarks[12]
                         index_pip = landmarks[6]
                         middle_pip = landmarks[10]
+                        index_mcp = landmarks[5]
+                        middle_mcp_joint = landmarks[9]
                         
                         index_tip_x = int(index_tip.x * frame_width)
                         index_tip_y = int(index_tip.y * frame_height)
                         middle_x = int(middle_tip.x * frame_width)
                         middle_y = int(middle_tip.y * frame_height)
-                        
+
                         index_pip_y = int(index_pip.y * frame_height)
                         middle_pip_y = int(middle_pip.y * frame_height)
+                        index_mcp_y = int(index_mcp.y * frame_height)
+                        middle_mcp_y = int(middle_mcp_joint.y * frame_height)
 
-                        # Calculate distance between index and middle fingertips
-                        finger_distance = np.sqrt(
-                            (index_tip_x - middle_x) ** 2 + 
-                            (index_tip_y - middle_y) ** 2
-                        )
-                        
+                        finger_distance = np.sqrt((index_tip_x - middle_x) ** 2 + (index_tip_y - middle_y) ** 2)
                         finger_distance_history.append(finger_distance)
-                        avg_distance = sum(finger_distance_history) / len(finger_distance_history)
+                        
+                        # Robust averaging with outlier rejection
+                        if len(finger_distance_history) >= 5:
+                            distances = np.array(finger_distance_history)
+                            median_dist = np.median(distances)
+                            mad = np.median(np.abs(distances - median_dist))
+                            filtered = distances[np.abs(distances - median_dist) < 2 * mad]
+                            avg_distance = np.mean(filtered) if len(filtered) > 0 else median_dist
+                        else:
+                            avg_distance = sum(finger_distance_history) / len(finger_distance_history)
 
-                        # Check if fingers are extended (not folded down)
-                        fingers_extended = (index_tip_y < index_pip_y) and (middle_y < middle_pip_y)
+                        # Enhanced finger extension check
+                        index_extended = (index_tip_y < index_pip_y - 5) and (index_pip_y < index_mcp_y)
+                        middle_extended = (middle_y < middle_pip_y - 5) and (middle_pip_y < middle_mcp_y)
+                        fingers_extended = index_extended and middle_extended
+                        
+                        # Pinch velocity check
+                        pinch_velocity = 0
+                        if len(finger_distance_history) >= 3:
+                            recent = list(finger_distance_history)[-3:]
+                            pinch_velocity = abs(recent[-1] - recent[0])
 
-                        # ----- STATE MACHINE FOR RELIABLE CLICKS -----
-                        if click_state == IDLE:
-                            # Looking for a pinch gesture
-                            if avg_distance < click_threshold and fingers_extended:
-                                stable_pinch_frames += 1
-                                if stable_pinch_frames >= required_stable_frames:
-                                    click_state = PINCHING
-                            else:
-                                stable_pinch_frames = 0
-                                
-                        elif click_state == PINCHING:
-                            # Confirm pinch is stable, then click
-                            if avg_distance < click_threshold and fingers_extended:
+                        if avg_distance < click_threshold and fingers_extended and click_released and pinch_velocity < 12:
+                            click_frames_counter += 1
+
+                            if click_frames_counter >= click_trigger_frames and not is_clicking:
                                 if time.time() - last_click_time > click_cooldown:
                                     print('✓ Click')
                                     pyautogui.click()
                                     last_click_time = time.time()
-                                    click_state = CLICKED
-                                    stable_pinch_frames = 0
-                            else:
-                                # False alarm, reset
-                                click_state = IDLE
-                                stable_pinch_frames = 0
-                                
-                        elif click_state == CLICKED:
-                            # Wait for fingers to separate before allowing next click
-                            if avg_distance > release_threshold:
-                                click_state = IDLE
-                                stable_pinch_frames = 0
+                                    is_clicking = True
+                                    click_released = False
+                        elif avg_distance > min_release_distance:
+                            click_frames_counter = max(0, click_frames_counter - 1)
+                            is_clicking = False
+                            click_released = True
+                        else:
+                            click_frames_counter = max(0, click_frames_counter - 1)
+                            is_clicking = False
 
-                        # ----- SMOOTH CURSOR MOVEMENT -----
+                        # ----- CURSOR TRACKING WITH THUMB -----
                         if cursor_x is not None and cursor_y is not None:
                             x_buffer.append(cursor_x)
                             y_buffer.append(cursor_y)
@@ -196,8 +229,9 @@ class ARMouseController:
                                 pass
                 else:
                     # No hand detected, reset click state
-                    click_state = IDLE
-                    stable_pinch_frames = 0
+                    click_frames_counter = 0
+                    is_clicking = False
+                    click_released = True
 
         finally:
             cap.release()
