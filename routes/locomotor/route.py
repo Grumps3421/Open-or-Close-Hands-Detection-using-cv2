@@ -3,7 +3,7 @@ from bot_movements.serial_handler import send_command
 
 locomotor_bp = Blueprint("locomotor_bp", __name__)
 
-@locomotor_bp.route("/locomotor", methods=["GET"])
+@locomotor_bp.route("/locomotor", methods=["GET" , "POST"])
 def locomotor():
     try:
         # Command to send to Arduino

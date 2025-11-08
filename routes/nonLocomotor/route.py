@@ -3,7 +3,7 @@ from bot_movements.serial_handler import send_command
 
 nonLocomotor_bp = Blueprint("nonLocomotor_bp", __name__)
 
-@nonLocomotor_bp.route("/nonLocomotor", methods=["GET"])
+@nonLocomotor_bp.route("/nonLocomotor", methods=["GET" , "POST"])
 def nonLocomotor():
     try:
         # Command to send to Arduino
