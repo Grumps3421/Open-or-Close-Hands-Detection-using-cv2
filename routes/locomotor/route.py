@@ -1,6 +1,8 @@
 
 from flask import Blueprint, jsonify
 
+from bot_movements.serial_handler import send_command
+
 
 locomotor_bp = Blueprint("locomotor_bp", __name__)
 
