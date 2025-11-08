@@ -17,7 +17,6 @@ def CorrectAction(command):
 def WrongAction(command):
     return send_command(command)
 
-
 # ==========================================
 # 🧭 SOUND CONTROLLER INITIALIZATION
 sound_controller = SoundController()
