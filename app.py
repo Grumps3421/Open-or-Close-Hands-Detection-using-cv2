@@ -12,6 +12,9 @@ from routes.progress_tracking import progressTracking_bp
 from routes.loginStudent import login_bp
 from routes.selectStudent import selectStudent_bp
 from routes.AR import AR_bp
+from routes.locomotor import locomotor_bp
+from routes.nonLocomotor import nonLocomotor_bp
+
 
 app.register_blueprint(main_bp)
 app.register_blueprint(register_bp)
@@ -21,6 +24,8 @@ app.register_blueprint(progressTracking_bp)
 app.register_blueprint(login_bp)
 app.register_blueprint(selectStudent_bp)
 app.register_blueprint(AR_bp)
+app.register_blueprint(locomotor_bp)
+app.register_blueprint(nonLocomotor_bp)
 
 if __name__ == "__main__":
     app.run(debug=False)
