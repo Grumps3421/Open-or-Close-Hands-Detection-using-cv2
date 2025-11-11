@@ -7,7 +7,7 @@ from threading import Thread
 from flask import Flask
 from flask_cors import CORS
 
-app = Flask(__name__)
+app = Flask(__name__) 
 CORS(app)
 
 # --- Import all routes ---
@@ -46,11 +46,45 @@ def start_mongo():
         print("[ERROR] Failed to start MongoDB container:", e)
 
 
+# --- Function to free a port if in use ---
+def free_port(port=3000):
+    try:
+        result = subprocess.check_output(f"lsof -ti:{port}", shell=True)
+        for pid in result.splitlines():
+            subprocess.call(f"kill -9 {pid.decode()}", shell=True)
+            print(f"[INFO] Killed process {pid.decode()} on port {port}")
+    except subprocess.CalledProcessError:
+        # No process using port
+        pass
+
+
+# --- Function to open Chromium safely ---
+def open_chromium(url="http://localhost:3000"):
+    chromium_path = "/usr/bin/chromium-browser"  # default path on Raspberry Pi
+    if os.path.exists(chromium_path):
+        try:
+            webbrowser.register('chromium', None, webbrowser.BackgroundBrowser(chromium_path))
+            webbrowser.get('chromium').open(url)
+            print(f"[INFO] Chromium opened {url}")
+        except Exception as e:
+            print("[WARNING] Failed to open Chromium:", e)
+    else:
+        print("[WARNING] Chromium not found, opening default browser instead")
+        webbrowser.open(url)
+
+
 # --- Function to start Next.js frontend ---
 def run_frontend():
     print("[INFO] Building and starting Next.js frontend...")
-    frontend_dir = r"C:\Thesis\frontend"  # adjust if different path in your Pi
-    subprocess.call("npm run build", shell=True, cwd=frontend_dir)
+    frontend_dir = r"/home/pi/Downloads/Thesis-mk3.0-main"  # adjust if different path in your Pi 
+
+    # Free port 3000 before starting frontend
+    free_port(3000)
+
+    # Build frontend (blocking)
+    #subprocess.call("npm run build", shell=True, cwd=frontend_dir)
+
+    # Start frontend in background
     subprocess.Popen("npm run start", shell=True, cwd=frontend_dir)
 
 
@@ -66,7 +100,7 @@ def wait_for_port(host, port, timeout=60):
     return False
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     # Step 1: Start MongoDB container
     start_mongo()
 
@@ -76,8 +110,8 @@ if __name__ == "__main__":
 
     # Step 3: Wait until frontend is live (localhost:3000)
     if wait_for_port("localhost", 3000):
-        print("[INFO] Frontend is live! Opening in browser...")
-        webbrowser.open("http://localhost:3000")
+        print("[INFO] Frontend is live! Opening in Chromium...")
+        open_chromium("http://localhost:3000")
     else:
         print("[WARNING] Frontend didn't start in time.")
 
